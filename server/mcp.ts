@@ -18,6 +18,7 @@ import {
   restoreVersion,
 } from "./piece-edits";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
+import { exportPiece, renderPreview } from "./renderer";
 import { ONBOARD_GUIDE } from "./onboard";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
 import { log } from "./log";
@@ -124,6 +125,24 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number(), version: z.number() },
     },
     async ({ id, version }) => lintedJson(restoreVersion(sessionKey, { id, version }).response)
+  );
+  server.registerTool(
+    "marketingos.render_preview",
+    {
+      description:
+        "Render a Creative Piece as slide HTML from the shared renderer components — the same components the PNG export screenshots, so preview equals export. Pass {id} for the current version or {id, version} for any version in the history.",
+      inputSchema: { id: z.number(), version: z.number().optional() },
+    },
+    async ({ id, version }) => lintedJson(renderPreview(sessionKey, { id, version }).response)
+  );
+  server.registerTool(
+    "marketingos.export_piece",
+    {
+      description:
+        "Export a Creative Piece: render one PNG per slide in headless Chromium from the shared renderer components, plus a captions file, into a bundle whose manifest names every file and the doc and kit versions it was rendered from.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson((await exportPiece(sessionKey, { id })).response)
   );
   server.registerTool(
     "project.get_snapshot",

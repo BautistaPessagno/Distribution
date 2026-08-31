@@ -2,22 +2,37 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState, Shell } from "../shell";
+import {
+  FORMAT_DIMENSIONS,
+  SlideView,
+  type RenderLayer,
+  type RenderDoc,
+} from "../../render/piece-slide";
 
-interface PieceLayer {
-  type: "text" | "image" | "shape" | "logo";
-  text?: string;
-  role?: string;
-  ref?: string;
-  alt?: string;
-  shape?: string;
-  fill?: string;
-  variant?: string;
-}
+type PieceLayer = RenderLayer;
+type PieceDoc = RenderDoc;
 
-interface PieceDoc {
-  format: string;
-  slides: { layers: PieceLayer[] }[];
-  captions: Record<string, string>;
+// Live preview: Studio renders the same SlideView component the server-side
+// PNG export screenshots, scaled down to fit the page.
+const PREVIEW_WIDTH = 320;
+
+function SlidePreview({ doc, index }: { doc: PieceDoc; index: number }) {
+  const { width, height } = FORMAT_DIMENSIONS[doc.format] ?? FORMAT_DIMENSIONS["1:1"];
+  const scale = PREVIEW_WIDTH / width;
+  return (
+    <div
+      style={{
+        width: PREVIEW_WIDTH,
+        height: Math.round(height * scale),
+        overflow: "hidden",
+        border: "1px solid var(--line, #ccc)",
+      }}
+    >
+      <div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
+        <SlideView slide={doc.slides[index]} format={doc.format} />
+      </div>
+    </div>
+  );
 }
 
 interface Piece {
@@ -135,6 +150,7 @@ export default function StudioPage() {
                       {p.doc.slides.map((slide, i) => (
                         <div key={i} className="body-text">
                           <strong>Slide {i + 1}</strong>
+                          <SlidePreview doc={p.doc} index={i} />
                           <ul>
                             {slide.layers.map((layer, j) => (
                               <li key={j}>{layerLabel(layer)}</li>
