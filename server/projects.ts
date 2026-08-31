@@ -133,6 +133,13 @@ export async function registerProject(
   return { token, project: toProject(getRow(id)), report };
 }
 
+// Resolves a project's service token from custody for in-process consumers
+// (e.g. the MCP gateway reading the project domain). Never expose it outward.
+export async function projectServiceToken(id: number, actor: string): Promise<string> {
+  const row = getRow(id);
+  return resolveSecret(row.token_secret_reference, actor);
+}
+
 export async function runConformanceFor(
   id: number,
   actor: string
