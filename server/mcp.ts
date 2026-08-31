@@ -3,9 +3,13 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { currentKit } from "./brand-kit";
+import { checkBrand, checkQuality } from "./checks";
 import {
   getResource,
   getSnapshot,
+  noProjectSelected,
+  pinnedSession,
   selectProject,
   sessionContext,
 } from "./gateway";
@@ -103,7 +107,7 @@ function buildServer(sessionKey: string): McpServer {
     "marketingos.apply_edit_batch",
     {
       description:
-        `Apply an atomic batch of 1-${MAX_BATCH_OPS} typed edit operations (set_text, set_fill, add_layer, remove_layer, set_caption) to a Creative Piece, bound to the baseVersion the batch was computed against. A stale base returns version_conflict changing nothing; structural errors reject the whole batch; invalid cosmetic values fall back with a warning. Each applied batch bumps the version.`,
+        `Apply an atomic batch of 1-${MAX_BATCH_OPS} typed edit operations (set_text, set_fill, set_font, add_layer, remove_layer, set_caption) to a Creative Piece, bound to the baseVersion the batch was computed against. A stale base returns version_conflict changing nothing; structural errors reject the whole batch; invalid cosmetic values fall back with a warning. Each applied batch bumps the version.`,
       inputSchema: applyEditBatchInputSchema.shape,
     },
     async (input) => lintedJson(applyEditBatch(sessionKey, input).response)
@@ -127,10 +131,44 @@ function buildServer(sessionKey: string): McpServer {
     async ({ id, version }) => lintedJson(restoreVersion(sessionKey, { id, version }).response)
   );
   server.registerTool(
+    "marketingos.get_brand_kit",
+    {
+      description:
+        "Read the Brand Kit of the selected Connected Project: the versioned token table (brand.<name> colours, font.<name> families) that Creative Pieces reference. Pieces hold token names, never copied values, so a kit change repaints backlog and drafting pieces.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        kit: currentKit(pinned.projectId),
+      });
+    }
+  );
+  server.registerTool(
+    "marketingos.check_brand",
+    {
+      description:
+        "Run the deterministic brand check over a Creative Piece against its Brand Kit: off-kit colours and fonts, empty text layers, and missing assets are errors that block approval; overflow risk is a warning that does not. Every finding names the slide and layer it is about.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(checkBrand(sessionKey, { id }).response)
+  );
+  server.registerTool(
+    "marketingos.check_quality",
+    {
+      description:
+        "Run the heuristic quality check over a Creative Piece: crowded or empty slides, slides with no text, missing captions. Every finding is advisory and never blocks anything.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(checkQuality(sessionKey, { id }).response)
+  );
+  server.registerTool(
     "marketingos.render_preview",
     {
       description:
-        "Render a Creative Piece as slide HTML from the shared renderer components — the same components the PNG export screenshots, so preview equals export. Pass {id} for the current version or {id, version} for any version in the history.",
+        "Render a Creative Piece as slide HTML from the shared renderer components — the same components the PNG export screenshots, so preview equals export. Brand Kit tokens are resolved at render time, so the preview reflects the current kit. Pass {id} for the current version or {id, version} for any version in the history.",
       inputSchema: { id: z.number(), version: z.number().optional() },
     },
     async ({ id, version }) => lintedJson(renderPreview(sessionKey, { id, version }).response)

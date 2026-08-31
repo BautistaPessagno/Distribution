@@ -171,8 +171,9 @@ test("export bundle: manifest names every file and the versions it was rendered 
   const manifest = bundle.manifest;
   assert.equal(manifest.pieceId, id);
   assert.equal(manifest.docVersion, 1);
-  // No Brand Kit exists yet; the kit version is recorded explicitly as null.
-  assert.equal(manifest.kitVersion, null);
+  // The bundle records the Brand Kit version it was rendered through, so a
+  // later kit change is visible as a difference against this export.
+  assert.equal(manifest.kitVersion, 1);
   assert.equal(manifest.format, "1:1");
 
   const bundleDir = path.join(process.env.EXPORTS_PATH as string, bundle.name);

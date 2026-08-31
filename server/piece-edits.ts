@@ -36,13 +36,18 @@ export const EDITABLE_STATUSES: readonly PieceStatus[] = ["backlog", "drafting"]
 export const REOPEN_PATH = "marketingos.reopen_piece";
 
 const FILL_FALLBACK = "brand.ink";
-const FILL_PATTERN = /^(#[0-9a-fA-F]{6}|brand\.\w+)$/;
+const FILL_PATTERN = /^(#[0-9a-fA-F]{6}|brand\.[a-z][a-z0-9-]*)$/;
+const FONT_FALLBACK = "font.body";
+// A font value is a kit token or a raw family name; check_brand is what
+// reports the raw one as off-kit.
+const FONT_PATTERN = /^(font\.[a-z][a-z0-9-]*|[A-Za-z][\w '",.-]{0,199})$/;
 
 const indexSchema = z.number().int().min(0);
 
 export const editOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_text"), slide: indexSchema, layer: indexSchema, value: z.string() }),
   z.object({ op: z.literal("set_fill"), slide: indexSchema, layer: indexSchema, value: z.string() }),
+  z.object({ op: z.literal("set_font"), slide: indexSchema, layer: indexSchema, value: z.string() }),
   z.object({ op: z.literal("add_layer"), slide: indexSchema, layer: pieceLayerSchema }),
   z.object({ op: z.literal("remove_layer"), slide: indexSchema, layer: indexSchema }),
   z.object({ op: z.literal("set_caption"), network: z.enum(CAPTION_NETWORKS), value: z.string() }),
@@ -107,7 +112,7 @@ function batchRejected(detail: string): GatewayResult {
   return errResult(
     "invalid_batch",
     `Batch rejected: ${detail} The whole batch was discarded; the piece is unchanged.`,
-    `An edit batch is 1-${MAX_BATCH_OPS} typed operations (set_text, set_fill, add_layer, remove_layer, set_caption) bound to the baseVersion it was computed against.`
+    `An edit batch is 1-${MAX_BATCH_OPS} typed operations (set_text, set_fill, set_font, add_layer, remove_layer, set_caption) bound to the baseVersion it was computed against.`
   );
 }
 
@@ -157,8 +162,10 @@ function structuralError(doc: PieceDoc, op: EditOp): string | null {
   if (!layer) return `operation targets layer ${op.layer} on slide ${op.slide}, which does not exist.`;
   if (op.op === "set_text" && layer.type !== "text")
     return `set_text targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only text layers hold text.`;
-  if (op.op === "set_fill" && layer.type !== "shape")
-    return `set_fill targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only shape layers hold a fill.`;
+  if (op.op === "set_fill" && layer.type !== "shape" && layer.type !== "text")
+    return `set_fill targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only shape and text layers hold a colour.`;
+  if (op.op === "set_font" && layer.type !== "text")
+    return `set_font targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only text layers hold a font.`;
   return null;
 }
 
@@ -185,7 +192,19 @@ function applyOps(
         }
         const layer = next.slides[op.slide].layers[op.layer];
         if (layer.type === "shape") layer.fill = fill;
+        if (layer.type === "text") layer.color = fill;
         summaries.push(`fill of slide ${op.slide} layer ${op.layer}`);
+        break;
+      }
+      case "set_font": {
+        let font = op.value;
+        if (!FONT_PATTERN.test(font)) {
+          warnings.push(`Cosmetic value "${font}" is invalid; fell back to ${FONT_FALLBACK}.`);
+          font = FONT_FALLBACK;
+        }
+        const layer = next.slides[op.slide].layers[op.layer];
+        if (layer.type === "text") layer.font = font;
+        summaries.push(`font of slide ${op.slide} layer ${op.layer}`);
         break;
       }
       case "add_layer": {

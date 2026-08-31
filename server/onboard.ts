@@ -24,6 +24,20 @@ export const ONBOARD_GUIDE = {
       "Create a Creative Piece from a PieceDoc bound to the pinned Project Snapshot. It starts in the backlog for Operator review in Studio.",
     "marketingos.get_piece": "Read one Creative Piece with its full PieceDoc. Cross-project access is refused.",
     "marketingos.list_pieces": "List the selected project's Creative Pieces with status tags.",
+    "marketingos.apply_edit_batch":
+      "Apply an atomic batch of typed edit operations to a Creative Piece, bound to the baseVersion it was computed against.",
+    "marketingos.list_versions": "Read a Creative Piece's append-only version history.",
+    "marketingos.restore_version": "Restore an old version of a Creative Piece as a new version.",
+    "marketingos.get_brand_kit":
+      "Read the selected project's Brand Kit: the versioned token table pieces reference. Pieces hold token names, never copied values.",
+    "marketingos.check_brand":
+      "Deterministic brand check over a piece: off-kit colours and fonts, empty text layers, and missing assets are errors that block approval; overflow risk is a warning.",
+    "marketingos.check_quality":
+      "Heuristic quality check over a piece. Every finding is advisory and never blocks anything.",
+    "marketingos.render_preview":
+      "Render a Creative Piece as slide HTML from the same components the PNG export screenshots.",
+    "marketingos.export_piece":
+      "Export a Creative Piece as a PNG-per-slide bundle plus captions, recorded with its doc and kit versions.",
     "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
     "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },
