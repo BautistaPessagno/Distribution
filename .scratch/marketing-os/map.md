@@ -23,6 +23,7 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - The core MVP requires only the MarketingOS MCP gateway, an AI Host, and a project-domain implementation for each Connected Project. Ordinary social or advertising accounts may be manual destinations, but no additional creative vendor, model subscription, or automation service may be required.
 - Static image prompts and edits may use capabilities already included in the AI Host. The MVP records the handoff and imported result; it does not claim that MarketingOS generated the image.
 - External, destructive, identity-bearing, or money-spending actions require explicit Operator approval.
+- Prototypes and the final product stay minimalist. Every workflow surface is step-by-step, and each step hands over exactly one copyable prompt for the AI Host or one plain instruction for the Operator.
 
 ## Decisions so far
 
@@ -35,12 +36,11 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Choose the dashboard's first-use loop](issues/07-choose-dashboard-first-use-loop.md): the home screen is a Today view with due work, upcoming Creative Pieces, an undated backlog, a calendar, visible states, and a clear creation action.
 - [Define the Connected Project MCP contract](issues/08-define-connected-project-mcp-contract.md): one MCP gateway exposes MarketingOS methods and a selected project's versioned, provenance-aware, approval-gated read/write domain while the AI Host supplies all AI compute.
 - [Define the Creative Piece workflow](issues/10-define-creative-piece-workflow.md): a prototype-validated workflow with the backlog-to-measured lifecycle, atomic versioned edit batches, token-driven Brand Kit repaint with pinned approvals, brand errors gating approval, strip-and-save templates, and PNG-bundle export.
+- [Define the AI Host onboarding contract](issues/09-define-ai-host-onboarding-contract.md): one workspace-scoped connection with in-session project selection, guiding errors, onboard-plus-goal-routing discovery, a 19-tool two-domain catalog, digest-keyed approvals that never transit the host, and inline base64 image return with a manual fallback.
 
 ## Not yet specified
 
 - Current platform-policy research for the exact warm-up and manual engagement actions selected by the account-operations decision.
-- The exact binary-media return path from each supported AI Host after image generation or editing.
-- Authentication, authorization, and secrets design after both MCP contracts and the Operator model are specified.
 - Hosting, deployment, and recovery requirements after the technical architecture is selected.
 - Exact SEO, search-console, answer-engine, social, and product-metric ingestion after the measurement model identifies required observations.
 - Licensing and attribution mechanics if Marketing AGI text or rubrics are copied rather than cleanly reimplemented.
