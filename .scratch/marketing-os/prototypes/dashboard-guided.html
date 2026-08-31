@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MarketingOS, guided dashboard (prototype)</title>
+<style>
+  :root {
+    --canvas: #FBFBFA; --surface: #FFFFFF; --wash: #F7F6F3;
+    --line: #EAEAEA; --ink: #111111; --body: #2F3437; --mut: #787774;
+    --green-bg: #EDF3EC; --green-tx: #346538;
+    --yellow-bg: #FBF3DB; --yellow-tx: #956400;
+    --blue-bg: #E1F3FE; --blue-tx: #1F6C9F;
+    --red-bg: #FDEBEC; --red-tx: #9F2F2D;
+    --sans: 'SF Pro Display', 'Geist Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --serif: 'Newsreader', 'Lyon Text', Georgia, 'Times New Roman', serif;
+    --mono: 'Geist Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 15px/1.6 var(--sans); color: var(--body); background: var(--canvas); min-height: 100dvh; }
+
+  /* one fixed ambient light spot, non-scrolling */
+  .ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(560px 380px at 72% 8%, rgba(180, 160, 120, 0.05), transparent 70%); }
+
+  header { position: relative; z-index: 1; height: 60px; display: flex; align-items: center; gap: 28px;
+    padding: 0 28px; background: rgba(255,255,255,.82); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .wordmark { font-weight: 650; letter-spacing: -0.02em; color: var(--ink); font-size: 15px; }
+  nav.projects { display: flex; gap: 20px; }
+  nav.projects button { font: 500 13.5px var(--sans); background: none; border: none; padding: 4px 0;
+    color: var(--mut); cursor: pointer; border-bottom: 1.5px solid transparent; }
+  nav.projects button.on { color: var(--ink); border-bottom-color: var(--ink); }
+  .sample { margin-left: auto; font: 500 10.5px var(--sans); letter-spacing: 0.05em; text-transform: uppercase;
+    background: var(--yellow-bg); color: var(--yellow-tx); border-radius: 9999px; padding: 3px 10px; }
+
+  main { position: relative; z-index: 1; max-width: 620px; margin: 0 auto; padding: 96px 24px 120px; }
+
+  .meta { font: 500 13px var(--sans); color: var(--mut); }
+
+  .progress { display: flex; align-items: center; gap: 10px; margin: 14px 0 44px; }
+  .progress .count { font: 500 12px var(--mono); color: var(--mut); letter-spacing: 0.02em; }
+  .segs { display: flex; gap: 5px; }
+  .segs i { width: 26px; height: 2px; background: var(--line); border-radius: 1px; }
+  .segs i.done { background: var(--ink); }
+
+  .step { animation: enter 600ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .step > * { animation: enter 600ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .step > *:nth-child(2) { animation-delay: 80ms; }
+  .step > *:nth-child(3) { animation-delay: 160ms; }
+  .step > *:nth-child(4) { animation-delay: 240ms; }
+  .step > *:nth-child(5) { animation-delay: 320ms; }
+  @keyframes enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .step, .step > * { animation: none; } }
+
+  h1 { font: 460 34px/1.2 var(--serif); letter-spacing: -0.02em; color: var(--ink); margin: 0 0 10px; }
+  .why { color: var(--mut); margin: 0 0 32px; max-width: 52ch; }
+
+  .promptbox { position: relative; background: var(--wash); border: 1px solid var(--line); border-radius: 8px;
+    padding: 22px 24px; font: 13px/1.75 var(--mono); color: var(--body); white-space: pre-wrap; word-break: break-word; }
+  .copy { position: absolute; top: 14px; right: 14px; font: 500 12.5px var(--sans); background: var(--ink);
+    color: #fff; border: none; border-radius: 5px; padding: 6px 14px; cursor: pointer; }
+  .copy:hover { background: #333333; }
+  .copy:active { transform: scale(0.98); }
+  .copy.did { background: var(--green-tx); }
+
+  .detail { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 2px; display: flex; gap: 14px; align-items: baseline; }
+  .detail + .detail { border-top: 0; }
+  .detail .k { font: 500 12px var(--mono); color: var(--mut); min-width: 96px; }
+  .detail .v { color: var(--body); }
+
+  .tag { display: inline-block; font: 600 10.5px var(--sans); letter-spacing: 0.05em; text-transform: uppercase;
+    border-radius: 9999px; padding: 3px 10px; vertical-align: 1px; }
+  .tag.green { background: var(--green-bg); color: var(--green-tx); }
+  .tag.yellow { background: var(--yellow-bg); color: var(--yellow-tx); }
+  .tag.blue { background: var(--blue-bg); color: var(--blue-tx); }
+  .tag.red { background: var(--red-bg); color: var(--red-tx); }
+
+  .fields { display: grid; gap: 18px; }
+  .field label { display: block; font: 500 13px var(--sans); color: var(--ink); margin-bottom: 6px; }
+  .field input { width: 100%; font: 14px var(--sans); padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--surface); color: var(--ink); }
+  .field input:focus { outline: none; border-color: var(--ink); }
+  .field .help { font-size: 12.5px; color: var(--mut); margin-top: 5px; }
+
+  .actions { display: flex; align-items: center; gap: 18px; margin-top: 36px; }
+  .primary { font: 600 14px var(--sans); background: var(--ink); color: #fff; border: none; border-radius: 6px;
+    padding: 12px 26px; cursor: pointer; }
+  .primary:hover { background: #333333; }
+  .primary:active { transform: scale(0.98); }
+  .quiet { font: 500 13.5px var(--sans); background: none; border: none; color: var(--mut); cursor: pointer; padding: 0; }
+  .quiet:hover { color: var(--ink); }
+  .hint { margin-left: auto; font-size: 12.5px; color: var(--mut); }
+  kbd { font: 11.5px var(--mono); border: 1px solid var(--line); border-radius: 4px; background: var(--wash);
+    padding: 2px 6px; color: var(--body); }
+
+  .doneline { display: flex; gap: 14px; align-items: baseline; padding: 16px 2px; border-bottom: 1px solid var(--line); }
+  .doneline:first-of-type { border-top: 1px solid var(--line); }
+  .doneline .n { font: 500 12px var(--mono); color: var(--mut); min-width: 20px; }
+  .doneline .t { color: var(--body); flex: 1; }
+
+  footer.note { position: relative; z-index: 1; text-align: center; padding: 0 24px 40px; font-size: 12.5px; color: var(--mut); }
+  a.backlink { color: var(--mut); }
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<header>
+  <span class="wordmark">MarketingOS</span>
+  <nav class="projects">
+    <button class="on">KeepAnalog</button>
+    <button>partnr</button>
+    <button>VinylOS</button>
+  </nav>
+  <span class="sample">Prototype, sample data</span>
+</header>
+
+<main id="main"></main>
+<footer class="note">Nothing here publishes anything. Every platform action is yours, by hand.</footer>
+
+<script>
+/* Guided dashboard, the winning IA from the three-variant prototype.
+   Only the current step is on screen. Each step hands over exactly one
+   copyable prompt for the AI Host or one instruction for the Operator. */
+
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const PROMPT = `Connect to MarketingOS and select project "keepanalog".
+Call marketingos.get_method("draft_creative_piece").
+Draft 3 Instagram posts from Creative Brief brief-12
+against snapshot snap-keepanalog-r8, citing approved claims only.`;
+
+const steps = [
+  {
+    headline: "Send today's brief to your AI Host.",
+    why: "Experiment EXP-3 needs three more pieces before its sample target. This prompt carries everything the host needs.",
+    body: () => `<div class="promptbox">${esc(PROMPT)}<button class="copy" onclick="copyPrompt(this)">Copy</button></div>`,
+    cta: "I sent it",
+    done: "Brief sent to the AI Host"
+  },
+  {
+    headline: "Review the drafts it sent back.",
+    why: "Three drafts arrived in the backlog. Open each, check the claims, approve or request changes.",
+    body: () => `
+      <div class="detail"><span class="k">Piece 14</span><span class="v">Ship your ideas on paper <span class="tag blue">drafting</span></span></div>
+      <div class="detail"><span class="k">Piece 15</span><span class="v">Five reasons paper wins <span class="tag blue">drafting</span></span></div>
+      <div class="detail"><span class="k">Piece 16</span><span class="v">Notebook teardown, part one <span class="tag yellow">1 claim flagged</span></span></div>`,
+    cta: "Reviewed all three",
+    done: "Three drafts reviewed"
+  },
+  {
+    headline: "Approve one change to KeepAnalog.",
+    why: "The host prepared a project write. Read the exact diff; nothing applies until you approve this digest.",
+    body: () => `
+      <div class="detail"><span class="k">Digest</span><span class="v">chg-4f2a1c</span></div>
+      <div class="detail"><span class="k">Diff</span><span class="v">+ claim: "Recall improves 29% on paper" <span class="tag green">validated</span></span></div>
+      <div class="detail"><span class="k">Snapshot</span><span class="v">snap-keepanalog-r8, pinned 2 hours ago</span></div>`,
+    cta: "Approve digest",
+    alt: "Reject",
+    done: "Project write chg-4f2a1c approved"
+  },
+  {
+    headline: "Do today's warm-up for @keepanalog.paper.",
+    why: "Three niche interactions left today. The window closes at 18:00; the cap blocks anything beyond it.",
+    body: () => `
+      <div class="detail"><span class="k">Instruction</span><span class="v">Spend 10 minutes in stationery and note-taking content. Leave three genuine comments where you have something to say.</span></div>
+      <div class="detail"><span class="k">Proof</span><span class="v">Paste the three comment links when you are done.</span></div>`,
+    cta: "Done, proof attached",
+    done: "Warm-up completed with proof"
+  },
+  {
+    headline: "Record the 48-hour numbers.",
+    why: "The Sep 5 post hit its first observation point for EXP-3. Copy the three numbers from the Instagram app.",
+    body: () => `
+      <div class="fields">
+        <div class="field"><label>Views</label><input inputmode="numeric" placeholder="0"><div class="help">Reel plays, from the post insights screen.</div></div>
+        <div class="field"><label>Likes</label><input inputmode="numeric" placeholder="0"></div>
+        <div class="field"><label>Comments</label><input inputmode="numeric" placeholder="0"></div>
+      </div>`,
+    cta: "Save snapshot",
+    done: "48-hour Metric Snapshot recorded"
+  }
+];
+
+let current = 0;
+const completed = [];
+
+function render() {
+  const main = document.getElementById("main");
+  if (current >= steps.length) {
+    main.innerHTML = `
+      <div class="step">
+        <p class="meta">Today, Thursday September 4</p>
+        <div class="progress"><span class="count">done</span><span class="segs">${steps.map(() => '<i class="done"></i>').join("")}</span></div>
+        <h1>That is everything for today.</h1>
+        <p class="why">Five steps, all recorded. EXP-3 is one observation closer to its stop condition.</p>
+        <div>${completed.map((t, i) => `<div class="doneline"><span class="n">${i + 1}</span><span class="t">${esc(t)}</span><span class="tag green">done</span></div>`).join("")}</div>
+        <div class="actions">
+          <button class="primary" onclick="reset()">Start over (prototype)</button>
+          <span class="hint">Tomorrow starts with the 7-day measure for the Sep 5 post.</span>
+        </div>
+      </div>`;
+    return;
+  }
+  const s = steps[current];
+  main.innerHTML = `
+    <div class="step">
+      <p class="meta">Today, Thursday September 4</p>
+      <div class="progress">
+        <span class="count">${current + 1} of ${steps.length}</span>
+        <span class="segs">${steps.map((_, i) => `<i class="${i < current ? "done" : ""}"></i>`).join("")}</span>
+      </div>
+      <h1>${esc(s.headline)}</h1>
+      <p class="why">${esc(s.why)}</p>
+      <div>${s.body()}</div>
+      <div class="actions">
+        <button class="primary" onclick="advance()">${esc(s.cta)}</button>
+        ${s.alt ? `<button class="quiet" onclick="advance()">${esc(s.alt)}</button>` : ""}
+        <button class="quiet" onclick="advance()">Skip for now</button>
+        <span class="hint"><kbd>Enter</kbd> continues</span>
+      </div>
+    </div>`;
+}
+
+function advance() { completed.push(steps[current].done); current += 1; render(); }
+function reset() { current = 0; completed.length = 0; render(); }
+function copyPrompt(btn) {
+  if (navigator.clipboard) navigator.clipboard.writeText(PROMPT);
+  btn.textContent = "Copied";
+  btn.classList.add("did");
+  setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("did"); }, 1400);
+}
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (/INPUT|TEXTAREA|BUTTON/.test(document.activeElement.tagName)) return;
+  if (current < steps.length) advance();
+});
+render();
+</script>
+</body>
+</html>
