@@ -15,6 +15,7 @@ import { startJobRunner } from "./jobs";
 import { log, newRequestId } from "./log";
 import { handleMcpRequest } from "./mcp";
 import { projectRouter } from "./project-routes";
+import { runPlanRouter } from "./run-plan-routes";
 import { isActiveProjectTokenHash } from "./projects";
 import { createStubProjectRouter, stubVerifyAgainstProjects } from "./stub-project";
 
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
   server.use("/api/auth", authRouter());
   server.use("/api/hosts", hostAuthRouter());
   server.use("/api/projects", projectRouter());
+  server.use("/api/run-plans", runPlanRouter());
 
   // Dev stub Connected Project: a conformant project domain served by this
   // process so registration is testable before any real project exists.

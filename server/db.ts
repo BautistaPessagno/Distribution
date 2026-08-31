@@ -120,6 +120,16 @@ function migrate(d: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS run_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      goal TEXT NOT NULL,
+      project TEXT NOT NULL,
+      snapshot TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'proposed'
+        CHECK (status IN ('proposed', 'in_progress', 'done', 'abandoned')),
+      plan TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,

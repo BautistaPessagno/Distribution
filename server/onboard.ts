@@ -1,7 +1,9 @@
 export const CONTRACT_VERSION = "0.1.0";
+export const METHOD_LIBRARY_VERSION = "2026.08";
 
 export const ONBOARD_GUIDE = {
   contract: CONTRACT_VERSION,
+  methodLibraryVersion: METHOD_LIBRARY_VERSION,
   product: "MarketingOS",
   summary:
     "MarketingOS gives your AI Host evidence-backed marketing reasoning over versioned Connected Project context. One connection exposes two domains: marketingos.* (methods, pieces, workflow, approvals, Work Orders, outcomes) and project.* (the selected Connected Project's versioned, approval-gated context).",
@@ -16,13 +18,15 @@ export const ONBOARD_GUIDE = {
   tools: {
     "marketingos.onboard": "This guide: contract version, rules, tool map, example goals.",
     "marketingos.select_project": "Pin the session to one Connected Project Snapshot.",
-    "marketingos.get_method": "Route a marketing goal to a Method Library entry. (planned)",
+    "marketingos.get_method":
+      "Route a marketing goal to a Method Library entry: steps, rubric, output schema. Chained goals return a persisted MarketingRunPlan; unknown goals return closest-goal suggestions.",
     "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
     "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },
   exampleGoals: [
-    "Draft a positioning hypothesis for KeepAnalog from its Project Context.",
-    "Audit the partnr landing funnel and return a Scorecard with Findings.",
-    "Turn this Creative Brief into channel-native social posts for review.",
+    "positioning — draft a PositioningHypothesis from the pinned Project Snapshot.",
+    "audit_website — return an AuditRun: weighted Scorecard plus prioritized Findings.",
+    "social_content — turn a Creative Brief into channel-native posts for review.",
+    "audit_to_copy — a chained goal: routes to a persisted MarketingRunPlan.",
   ],
 } as const;
