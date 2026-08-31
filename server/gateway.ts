@@ -112,6 +112,26 @@ export function pinnedSession(sessionKey: string): PinnedSession | null {
   };
 }
 
+/** Everything a project-touching call needs about the pinned snapshot. */
+export interface PinnedDetail extends PinnedSession {
+  baseUrl: string;
+  cursor: number;
+  resources: Partial<Record<SnapshotResource, { state: "ok" | "empty"; data: unknown }>>;
+}
+
+export function pinnedDetail(sessionKey: string): PinnedDetail | null {
+  const snapshot = getSession(sessionKey).snapshot;
+  if (!snapshot) return null;
+  return {
+    projectId: snapshot.projectId,
+    projectName: snapshot.projectName,
+    snapshotId: snapshot.id,
+    baseUrl: snapshot.baseUrl,
+    cursor: snapshot.cursor,
+    resources: snapshot.resources,
+  };
+}
+
 export function registerInFlight(sessionKey: string, label: string): void {
   getSession(sessionKey).inFlight.push(label);
 }
@@ -138,12 +158,12 @@ export function noProjectSelected(): GatewayResult {
   );
 }
 
-interface FetchResult {
+export interface FetchResult {
   status: number;
   body: unknown;
 }
 
-async function fetchJson(url: string, token: string): Promise<FetchResult> {
+export async function fetchJson(url: string, token: string): Promise<FetchResult> {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
@@ -408,6 +428,54 @@ export async function getSnapshot(sessionKey: string): Promise<GatewayResult> {
   };
 }
 
+/**
+ * The refusal to send back when the world has moved past the pinned
+ * snapshot, or null when the snapshot still describes reality. Reads and
+ * two-phase writes both ask this, so a stale snapshot means the same thing
+ * everywhere.
+ */
+export async function staleSnapshotRefusal(
+  sessionKey: string,
+  subjects: string[],
+  retryCall: string,
+  next: string
+): Promise<GatewayResult | null> {
+  const pinned = getSession(sessionKey).snapshot;
+  if (!pinned) return noProjectSelected();
+
+  const token = await projectServiceToken(pinned.projectId, "ai-host");
+  let moved: { cursor: number; resource: string }[];
+  try {
+    moved = await entriesAfter(pinned.baseUrl, token, pinned.cursor);
+  } catch (err) {
+    return errResult(
+      "temporarily_unavailable",
+      `Staleness could not be verified against the project domain: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      `Retry ${retryCall}, or ask the Operator to check the Connected Project from the dashboard.`
+    );
+  }
+  if (moved.length === 0) return null;
+
+  return {
+    ok: false,
+    response: {
+      error: "stale_snapshot",
+      message: `Snapshot ${pinned.id} is stale; the project changed upstream.`,
+      contextGaps: subjects.map(
+        (resource) =>
+          ({
+            resource,
+            state: "stale",
+            detail: `${moved.length} change(s) landed after cursor ${pinned.cursor}.`,
+          }) satisfies ContextGap
+      ),
+      next,
+    },
+  };
+}
+
 export async function getResource(
   sessionKey: string,
   resource: string
@@ -424,36 +492,13 @@ export async function getResource(
     );
   }
 
-  const token = await projectServiceToken(pinned.projectId, "ai-host");
-  let moved: { cursor: number; resource: string }[];
-  try {
-    moved = await entriesAfter(pinned.baseUrl, token, pinned.cursor);
-  } catch (err) {
-    return errResult(
-      "temporarily_unavailable",
-      `Staleness could not be verified against the project domain: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-      "Retry project.get_resource, or ask the Operator to check the Connected Project from the dashboard."
-    );
-  }
-  if (moved.length > 0) {
-    return {
-      ok: false,
-      response: {
-        error: "stale_snapshot",
-        message: `Snapshot ${pinned.id} is stale; the project changed upstream.`,
-        contextGaps: [
-          {
-            resource,
-            state: "stale",
-            detail: `${moved.length} change(s) landed after cursor ${pinned.cursor}.`,
-          } satisfies ContextGap,
-        ],
-        next: "Call project.get_snapshot to pin a fresh snapshot, then re-read.",
-      },
-    };
-  }
+  const staleness = await staleSnapshotRefusal(
+    sessionKey,
+    [resource],
+    "project.get_resource",
+    "Call project.get_snapshot to pin a fresh snapshot, then re-read."
+  );
+  if (staleness) return staleness;
 
   const captured = pinned.resources[resource as SnapshotResource];
   if (!captured) {

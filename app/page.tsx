@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ApprovalInterruption, pendingOf, useApprovals } from "./approvals";
 import { PieceMoves } from "./piece-moves";
 import { EmptyState, Shell } from "./shell";
 
@@ -50,6 +51,7 @@ export default function Home() {
   const [days, setDays] = useState<CalendarDay[] | null>(null);
   const [backlog, setBacklog] = useState<TodayPiece[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const approvals = useApprovals();
 
   const load = useCallback(async () => {
     try {
@@ -70,7 +72,11 @@ export default function Home() {
   }, [load]);
 
   const nothingYet =
-    days !== null && days.length === 0 && backlog !== null && backlog.length === 0;
+    days !== null &&
+    days.length === 0 &&
+    backlog !== null &&
+    backlog.length === 0 &&
+    pendingOf(approvals.changes).length === 0;
 
   return (
     <Shell>
@@ -79,6 +85,10 @@ export default function Home() {
         <h1 className="headline" style={{ marginTop: "var(--space-2)" }}>
           Today
         </h1>
+
+        {/* Above the rail, deliberately: an approval is an interruption a
+            host caused, not a step you planned. */}
+        <ApprovalInterruption changes={approvals.changes} onDecided={approvals.reload} />
 
         {error && <p className="error-text">{error}</p>}
 

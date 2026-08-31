@@ -48,6 +48,10 @@ export const ONBOARD_GUIDE = {
       "Deterministic brand check over a piece: off-kit colors and fonts, empty text layers, and missing assets are errors that block approval; overflow risk is a warning.",
     "marketingos.check_quality":
       "Heuristic quality check over a piece. Every finding is advisory and never blocks anything.",
+    "project.prepare_change":
+      "Phase one of a project write: validate a Project Change Set against the pinned snapshot, change nothing, and return the digest, the exact diff, validations, and warnings.",
+    "marketingos.get_approval":
+      "The Operator's decision on a prepared digest: pending, approved, rejected, or used, with the one call to make next. A status, never a token.",
     "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
     "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },

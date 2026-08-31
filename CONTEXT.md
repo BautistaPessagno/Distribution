@@ -40,6 +40,14 @@ _Avoid_: Missing data, unknown
 An atomic proposal for approved changes to one Connected Project, bound to the Project Snapshot from which it was prepared.
 _Avoid_: Patch, write request
 
+**Change Digest**:
+The derived identifier of one Project Change Set prepared against one Project Snapshot of one Connected Project. The Operator approves a digest, never a request; the AI Host is told a status and never holds a grant.
+_Avoid_: Token, key, id
+
+**Write Policy**:
+A Connected Project's own declaration of which Project Change Set operations it accepts, which targets are editable, and which resources are protected. A project that declares nothing permits nothing.
+_Avoid_: Permissions, ACL
+
 **Write Receipt**:
 The permanent record of an applied Project Change Set and the resulting project resource versions.
 _Avoid_: Log, response
