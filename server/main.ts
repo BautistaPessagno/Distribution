@@ -1,7 +1,14 @@
 import express from "express";
 import next from "next";
-import { isPublicPath, validateSession } from "./auth";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import {
+  getOAuthProtectedResourceMetadataUrl,
+  mcpAuthRouter,
+} from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { expectedOrigin, isPublicPath, validateSession } from "./auth";
 import { authRouter, sessionTokenFrom } from "./auth-routes";
+import { WORKSPACE_SCOPE, hostOAuthProvider } from "./host-auth";
+import { hostAuthRouter } from "./host-auth-routes";
 import { getDb } from "./db";
 import { getHealth } from "./health";
 import { startJobRunner } from "./jobs";
@@ -41,7 +48,24 @@ async function main(): Promise<void> {
     res.status(report.status === "ok" ? 200 : 503).json(report);
   });
 
-  server.post("/mcp", express.json({ limit: "4mb" }), handleMcpRequest);
+  const origin = new URL(expectedOrigin());
+  const mcpUrl = new URL("/mcp", origin);
+  server.use(
+    mcpAuthRouter({
+      provider: hostOAuthProvider,
+      issuerUrl: origin,
+      resourceServerUrl: mcpUrl,
+      resourceName: "MarketingOS",
+      scopesSupported: [WORKSPACE_SCOPE],
+    })
+  );
+
+  const bearerAuth = requireBearerAuth({
+    verifier: hostOAuthProvider,
+    resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpUrl),
+  });
+
+  server.post("/mcp", bearerAuth, express.json({ limit: "4mb" }), handleMcpRequest);
   server.get("/mcp", (_req, res) => {
     res.status(405).json({
       jsonrpc: "2.0",
@@ -51,6 +75,7 @@ async function main(): Promise<void> {
   });
 
   server.use("/api/auth", authRouter());
+  server.use("/api/hosts", hostAuthRouter());
 
   server.use((req, res) => {
     if (!isPublicPath(req.path) && validateSession(sessionTokenFrom(req)) === null) {

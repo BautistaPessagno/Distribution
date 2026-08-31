@@ -74,6 +74,38 @@ function migrate(d: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       expires_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS oauth_clients (
+      client_id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TABLE IF NOT EXISTS oauth_codes (
+      code TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      resource TEXT,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TABLE IF NOT EXISTS host_connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL CHECK (kind IN ('oauth', 'static')),
+      label TEXT NOT NULL,
+      client_id TEXT,
+      scope TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'revoked')),
+      token_hash TEXT NOT NULL UNIQUE,
+      refresh_token_hash TEXT UNIQUE,
+      access_secret_reference TEXT NOT NULL,
+      refresh_secret_reference TEXT,
+      access_expires_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      revoked_at TEXT,
+      last_used_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,

@@ -11,6 +11,7 @@ const DESTINATIONS = [
   { href: "/operations", label: "Operations" },
   { href: "/learning", label: "Learning" },
   { href: "/projects", label: "Project Connection" },
+  { href: "/connections", label: "Host Connections" },
 ] as const;
 
 async function signOut() {
