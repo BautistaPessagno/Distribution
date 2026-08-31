@@ -24,6 +24,13 @@ export const ONBOARD_GUIDE = {
       "Create a Creative Piece from a PieceDoc bound to the pinned Project Snapshot. It starts in the backlog for Operator review in Studio.",
     "marketingos.get_piece": "Read one Creative Piece with its full PieceDoc. Cross-project access is refused.",
     "marketingos.list_pieces": "List the selected project's Creative Pieces with status tags.",
+    "marketingos.start_drafting": "Move a backlog Creative Piece to drafting, where edits apply.",
+    "marketingos.submit_for_review":
+      "Hand a drafting piece to the Operator for review. Only the Operator approves; approval means a person saw that exact document.",
+    "marketingos.approval_status":
+      "What stands between a piece and approval: brand errors and [NEED: ...] tokens block; quality findings never do.",
+    "marketingos.reopen_piece":
+      "Reopen a piece in review, approved, or planned back to drafting. Approval and the planned date are cleared.",
     "marketingos.get_brand_kit":
       "Read the selected project's Brand Kit: the versioned token table pieces reference. Pieces hold token names, never copied values.",
     "marketingos.check_brand":

@@ -21,6 +21,12 @@ import {
   MAX_BATCH_OPS,
   restoreVersion,
 } from "./piece-edits";
+import {
+  approvalStatus,
+  reopen,
+  startDrafting,
+  submitForReview,
+} from "./piece-lifecycle";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { exportPiece, renderPreview } from "./renderer";
 import { ONBOARD_GUIDE } from "./onboard";
@@ -129,6 +135,42 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number(), version: z.number() },
     },
     async ({ id, version }) => lintedJson(restoreVersion(sessionKey, { id, version }).response)
+  );
+  server.registerTool(
+    "marketingos.start_drafting",
+    {
+      description:
+        "Move a backlog Creative Piece to drafting, where edits apply.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(startDrafting(sessionKey, { id }).response)
+  );
+  server.registerTool(
+    "marketingos.submit_for_review",
+    {
+      description:
+        "Hand a drafting Creative Piece to the Operator for review. The Operator approves in the dashboard: approval means a person saw that exact document, so no host call can approve.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(submitForReview(sessionKey, { id }).response)
+  );
+  server.registerTool(
+    "marketingos.approval_status",
+    {
+      description:
+        "Read what stands between a Creative Piece and approval: check_brand errors and unsupported-claim [NEED: ...] tokens block it; check_quality findings are reported but never block.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(approvalStatus(sessionKey, { id }).response)
+  );
+  server.registerTool(
+    "marketingos.reopen_piece",
+    {
+      description:
+        "Reopen a Creative Piece in review, approved, or planned back to drafting so it can be edited. Approval and the planned date are cleared; the piece must pass review again.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(reopen(sessionKey, { id }).response)
   );
   server.registerTool(
     "marketingos.get_brand_kit",

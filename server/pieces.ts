@@ -35,6 +35,12 @@ export const PIECE_STATUSES = [
 ] as const;
 export type PieceStatus = (typeof PIECE_STATUSES)[number];
 
+/**
+ * The statuses whose rendering is pinned to the Brand Kit version approval
+ * ran against, and which therefore go brand-outdated when the kit moves on.
+ */
+export const PINNED_STATUSES: readonly PieceStatus[] = ["approved", "planned"];
+
 const frameSchema = z
   .object({
     x: z.number(),
@@ -95,6 +101,12 @@ export interface PieceRecord {
   snapshot: string;
   doc: PieceDoc;
   docVersion: number;
+  /** The Brand Kit version approval pinned the rendering to, or null. */
+  pinnedKitVersion: number | null;
+  /** Set when the kit moved on after approval; blocks export until re-approval. */
+  brandOutdated: boolean;
+  /** A plan, never a publishing queue. Cleared by reopen. */
+  plannedDate: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +119,9 @@ interface PieceRow {
   snapshot: string;
   doc: string;
   doc_version: number;
+  pinned_kit_version: number | null;
+  brand_outdated: number;
+  planned_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +135,9 @@ function rowToRecord(row: PieceRow): PieceRecord {
     snapshot: row.snapshot,
     doc: JSON.parse(row.doc) as PieceDoc,
     docVersion: row.doc_version,
+    pinnedKitVersion: row.pinned_kit_version,
+    brandOutdated: row.brand_outdated === 1,
+    plannedDate: row.planned_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -135,6 +153,28 @@ export function listPiecesForProject(projectId: number): PieceRecord[] {
 export function listAllPieces(): PieceRecord[] {
   const rows = getDb().prepare("SELECT * FROM pieces ORDER BY id DESC").all() as PieceRow[];
   return rows.map(rowToRecord);
+}
+
+/**
+ * Flag every piece of a project whose rendering approval pinned. Called when
+ * the Brand Kit changes: backlog and drafting pieces repaint freely, but
+ * approved and planned work keeps the rendering the Operator signed off on
+ * and says so. Returns the ids it flagged.
+ */
+export function flagBrandOutdated(projectId: number): number[] {
+  const db = getDb();
+  const placeholders = PINNED_STATUSES.map(() => "?").join(", ");
+  const affected = db
+    .prepare(
+      `SELECT id FROM pieces
+       WHERE project_id = ? AND brand_outdated = 0 AND status IN (${placeholders})`
+    )
+    .all(projectId, ...PINNED_STATUSES) as { id: number }[];
+  if (affected.length === 0) return [];
+  db.prepare(
+    `UPDATE pieces SET brand_outdated = 1 WHERE id IN (${affected.map(() => "?").join(", ")})`
+  ).run(...affected.map((row) => row.id));
+  return affected.map((row) => row.id);
 }
 
 export function getPieceById(id: number): PieceRecord | null {
@@ -157,6 +197,9 @@ function pieceSummary(piece: PieceRecord): Record<string, unknown> {
     slides: piece.doc.slides.length,
     snapshot: piece.snapshot,
     docVersion: piece.docVersion,
+    pinnedKitVersion: piece.pinnedKitVersion,
+    brandOutdated: piece.brandOutdated,
+    plannedDate: piece.plannedDate,
     createdAt: piece.createdAt,
   };
 }
