@@ -2,71 +2,176 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Creative Piece workflow — logic prototype (PROTOTYPE, throwaway)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Creative Piece workflow — prototype</title>
 <style>
-  :root { --accent: #1a6b54; --ink: #21252b; --muted: #6b7280; --line: #e5e7eb; --bg: #fafaf8; }
+  :root {
+    --accent: #1a6b54; --accent-soft: #e7f1ee;
+    --ink: #17201c; --muted: #68746f; --line: #e4e7e5;
+    --bg: #f5f6f5; --card: #ffffff;
+    --bad: #b42318; --bad-soft: #fdecec;
+    --warn: #92400e; --warn-soft: #fef3e2;
+    --radius: 12px;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
-  main { max-width: 1060px; margin: 0 auto; padding: 32px 24px 80px; }
-  h1 { font-size: 22px; margin: 0 0 6px; }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 36px 0 10px; }
-  h3 { font-size: 14px; margin: 14px 0 6px; }
-  .intro { color: var(--muted); max-width: 76ch; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .panel { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
-  .panel h3 { margin-top: 0; }
-  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
-  th, td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; }
-  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #eef2f0; color: var(--accent); }
-  .tag.bad { background: #fdecec; color: #b42318; }
-  .tag.warn { background: #fef3e2; color: #92400e; }
-  button { font: inherit; font-size: 13.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; margin: 2px 4px 2px 0; }
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover { opacity: .9; color: #fff; }
-  button.step.done { opacity: .45; text-decoration: line-through; }
-  button.step.next { border-color: var(--accent); box-shadow: 0 0 0 2px #1a6b5433; }
-  .log { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; max-height: 220px; overflow: auto; font-size: 13px; }
-  .log div { padding: 2px 0; border-bottom: 1px dashed #f0f0ee; }
-  .log .error { color: #b42318; }
-  .log .warn { color: #92400e; }
-  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; border: 1px solid #0002; margin-right: 4px; }
-  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .scenario p { margin: 6px 0 10px; color: var(--muted); max-width: 80ch; }
-  .steps { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-  .sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+  body { margin: 0; font: 14.5px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 24px 90px; }
+
+  header h1 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); margin: 4px 0 0; max-width: 90ch; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 2px 8px; border-radius: 6px; background: var(--warn-soft); color: var(--warn); vertical-align: 3px; margin-left: 8px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
+
+  /* Walkthrough */
+  .scenarios { margin-top: 22px; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pills button { font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); cursor: pointer; color: var(--muted); }
+  .pills button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .scenario-blurb { color: var(--muted); margin: 12px 2px 12px; max-width: 100ch; }
+  .stepchips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stepchips button { font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); cursor: default; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .stepchips button .n { width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--muted); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  .stepchips button.done { opacity: .55; }
+  .stepchips button.done .n { background: var(--accent); color: #fff; }
+  .stepchips button.next { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; box-shadow: 0 1px 4px #1a6b5426; }
+  .stepchips button.next .n { background: var(--accent); color: #fff; }
+  .stepchips button.next:hover { background: #d9e9e4; }
+  .scenario-done { color: var(--accent); font-weight: 600; margin-top: 10px; }
+
+  /* Layout */
+  .grid { display: grid; grid-template-columns: 420px 1fr; gap: 20px; margin-top: 22px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Preview */
+  .canvas-frame { background: #eceeed; border-radius: 10px; padding: 22px; display: flex; justify-content: center; }
+  .canvas { width: 240px; border-radius: 8px; box-shadow: 0 10px 28px #0002, 0 1px 3px #0002; overflow: hidden; position: relative; display: flex; flex-direction: column; padding: 18px; gap: 10px; }
+  .canvas .logo-chip { position: absolute; top: 12px; left: 12px; font-size: 9px; font-weight: 800; letter-spacing: .06em; color: #fff; padding: 3px 7px; border-radius: 5px; }
+  .canvas .txt { font-weight: 700; line-height: 1.25; word-break: break-word; }
+  .canvas .shp { border-radius: 6px; min-height: 26px; flex: 0 0 auto; }
+  .canvas .spacer { flex: 1; }
+  .offkit { outline: 2px dashed var(--bad); outline-offset: 2px; }
+  .preview-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .empty-preview { color: var(--muted); text-align: center; padding: 40px 10px; }
+
+  /* Status pills */
+  .status { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+  .st-backlog { background: #eef0ef; color: #5a655f; }
+  .st-drafting { background: #e5effa; color: #1d5ca8; }
+  .st-review { background: var(--warn-soft); color: var(--warn); }
+  .st-approved { background: var(--accent-soft); color: var(--accent); }
+  .st-planned { background: #e6f3f5; color: #0e6b7a; }
+  .st-exported { background: #efeafa; color: #5b3ba8; }
+  .st-measured { background: #17201c; color: #fff; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: #eef0ef; color: var(--muted); }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+
+  /* Lifecycle stepper */
+  .lifecycle { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-top: 14px; }
+  .lifecycle .st { font-size: 11px; padding: 3px 8px; border-radius: 999px; color: var(--muted); background: transparent; }
+  .lifecycle .st.here { background: var(--accent); color: #fff; font-weight: 700; }
+  .lifecycle .st.past { color: var(--accent); }
+  .lifecycle .arrow { color: #c6ccc9; font-size: 10px; }
+
+  /* Actions */
+  .actions .group { margin-bottom: 4px; }
+  .actions .group + .group { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px; }
+  .actions .group-label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  button.act { font: inherit; font-size: 13.5px; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); cursor: pointer; margin: 0 6px 8px 0; }
+  button.act:hover { border-color: var(--accent); color: var(--accent); }
+  button.act.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.act.primary:hover { background: #14543f; color: #fff; }
+  button.act.danger { color: var(--bad); }
+  button.act.danger:hover { border-color: var(--bad); }
+
+  .flash { border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 14px; border: 1px solid transparent; }
+  .flash.info { background: var(--accent-soft); color: #14543f; border-color: #cfe2db; }
+  .flash.warn { background: var(--warn-soft); color: var(--warn); border-color: #f2e2bf; }
+  .flash.error { background: var(--bad-soft); color: var(--bad); border-color: #f4cbc7; }
+
+  /* Workspace lists */
+  .piece-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; cursor: pointer; border: 1px solid transparent; }
+  .piece-row:hover { background: #f7f8f7; }
+  .piece-row.sel { background: var(--accent-soft); border-color: #cfe2db; }
+  .piece-row .title { font-weight: 600; flex: 1; }
+  .piece-row .meta { color: var(--muted); font-size: 12.5px; }
+
+  .cal-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .cal-day { min-width: 86px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font-size: 12px; color: var(--muted); background: #fbfcfb; }
+  .cal-day.has { border-color: #bcd8ce; background: var(--accent-soft); }
+  .cal-day .d { font-weight: 700; color: var(--ink); }
+  .cal-day .p { margin-top: 4px; color: var(--accent); font-weight: 600; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid #f0f2f1; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; border: 1px solid #0002; margin-right: 6px; }
+
+  .finding { font-size: 13px; padding: 6px 10px; border-radius: 8px; margin-bottom: 6px; }
+  .finding.err { background: var(--bad-soft); color: var(--bad); }
+  .finding.warn { background: var(--warn-soft); color: var(--warn); }
+  .finding.q { background: #f0f2f1; color: var(--muted); }
+  .finding.ok { background: var(--accent-soft); color: var(--accent); }
+
+  .feed { max-height: 200px; overflow: auto; font-size: 13px; }
+  .feed div { padding: 4px 0; border-bottom: 1px dashed #f0f2f1; color: var(--muted); }
+  .feed div.error { color: var(--bad); }
+  .feed div.warn { color: var(--warn); }
+  .feed div.action { color: var(--ink); font-weight: 600; }
+  .muted { color: var(--muted); }
   .small { font-size: 12.5px; color: var(--muted); }
-  .free h3 { margin-bottom: 4px; }
-  .banner { background: #fff8ec; border: 1px solid #f2e2bf; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; margin: 14px 0; }
 </style>
 </head>
 <body>
-<main>
-  <h1>Creative Piece workflow — logic prototype</h1>
-  <p class="intro"><strong>The question this demo answers:</strong> does the chosen Creative Piece workflow feel right once you push it through real cases? The model under test: lifecycle <em>backlog → drafting → review → approved → planned → exported → measured</em> (with changes-requested back to drafting), atomic edit batches with optimistic concurrency (stale base version rejected), Brand Kit tokens that repaint drafts live but flag approved work as brand-outdated until re-approval, brand-check errors blocking approval while quality findings only advise, strip-and-save templates, and PNG-bundle export. Poke at it freely or run the guided walkthroughs.</p>
-  <p class="banner">PROTOTYPE, throwaway. State lives in memory only; reload to reset everything.</p>
+<div class="wrap">
+  <header>
+    <h1>Creative Piece workflow <span class="badge">PROTOTYPE · IN-MEMORY · RELOAD TO RESET</span></h1>
+    <p class="sub">Does this workflow feel right? Lifecycle <em>backlog → drafting → review → approved → planned → exported → measured</em>, atomic versioned edits, Brand Kit tokens that repaint drafts but flag approved work, brand errors gating approval while quality findings only advise. Run a walkthrough or drive it yourself from the actions panel.</p>
+  </header>
 
-  <h2>Guided walkthroughs</h2>
-  <div class="panel">
-    <div class="tabs" id="tabs"></div>
-    <div class="scenario" id="scenario"></div>
+  <div class="card scenarios">
+    <h2>Guided walkthroughs</h2>
+    <div class="pills" id="tabs"></div>
+    <p class="scenario-blurb" id="blurb"></p>
+    <div class="stepchips" id="steps"></div>
+    <div id="scenarioDone"></div>
   </div>
 
-  <h2>Current state</h2>
-  <div class="cols">
-    <div class="panel" id="brandPanel"></div>
-    <div class="panel" id="planPanel"></div>
+  <div class="grid">
+    <div class="stack">
+      <div class="card">
+        <h2>Piece preview <span class="small" style="text-transform:none;letter-spacing:0">— rendered live from tokens, so a Brand Kit change repaints it</span></h2>
+        <div id="preview"></div>
+      </div>
+      <div class="card">
+        <h2>Brand Kit</h2>
+        <div id="brand"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card actions">
+        <h2>Actions</h2>
+        <div id="flash"></div>
+        <div id="actions"></div>
+      </div>
+      <div class="card">
+        <h2>Studio — backlog & calendar</h2>
+        <div id="studio"></div>
+      </div>
+      <div class="card">
+        <h2>Focused piece — versions, checks, captions</h2>
+        <div id="detail"></div>
+      </div>
+      <div class="card">
+        <h2>Activity</h2>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
   </div>
-  <div class="panel" style="margin-top:20px" id="piecesPanel"></div>
-  <div class="panel" style="margin-top:20px" id="detailPanel"></div>
-
-  <h2>Free play</h2>
-  <div class="panel free" id="freePanel"></div>
-
-  <h2>What just happened</h2>
-  <div class="log" id="log"></div>
+</div>
 
 <script>
 /* ============================================================
@@ -101,10 +206,6 @@ const CreativePieceMachine = (() => {
   const clone = (x) => JSON.parse(JSON.stringify(x));
   const msg = (kind, text) => ({ kind, text });
   const fail = (state, text) => ({ state, ok: false, messages: [msg("error", text)] });
-
-  function resolveColor(kit, value) {
-    return kit.tokens[value] || value; // token reference or raw value
-  }
 
   function checkBrand(state, piece) {
     const errors = [], warnings = [];
@@ -368,132 +469,231 @@ const CreativePieceMachine = (() => {
 })();
 
 /* ============================================================
-   Throwaway page shell. Everything below renders state and
-   wires buttons; none of it is meant to outlive the prototype.
+   Throwaway page shell: renders state, wires buttons.
    ============================================================ */
+const LIFECYCLE = ["backlog", "drafting", "review", "approved", "planned", "exported", "measured"];
 let state = CreativePieceMachine.initialState();
 let selectedId = null;
-let logEntries = [];
+let feed = [];
+let lastFlash = null;
 
 function dispatch(action, label) {
+  if (label) feed.unshift({ kind: "action", text: `▶ ${label}` });
   const res = CreativePieceMachine.reduce(state, action);
   state = res.state;
   if (action.type === "CREATE_PIECE" && res.ok) selectedId = state.nextPieceId - 1;
-  for (const m of res.messages) logEntries.unshift(m);
-  if (label && res.ok) logEntries.unshift({ kind: "info", text: `▶ ${label}` });
+  for (const m of res.messages) feed.unshift(m);
+  lastFlash = res.messages[res.messages.length - 1] || null;
+  if (res.messages.some(m => m.kind === "error")) lastFlash = res.messages.find(m => m.kind === "error");
   render();
   return res.ok;
 }
 
 const sel = () => state.pieces[selectedId];
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const resolve = (ref) => state.brandKit.tokens[ref] || ref;
+const isOffKit = (ref) => ref && /^#/.test(ref) && !Object.values(state.brandKit.tokens).includes(ref) && !state.brandKit.tokens[ref];
 
-function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-
-function tokenSwatch(kit, ref) {
-  const v = kit.tokens[ref] || ref;
-  return /^#/.test(v) ? `<span class="swatch" style="background:${v}"></span>${esc(ref)}` : esc(ref);
+/* ---------- Preview ---------- */
+function renderPreview() {
+  const p = sel();
+  const el = document.getElementById("preview");
+  if (!p) { el.innerHTML = `<div class="empty-preview">No piece focused.<br>Create one from the actions panel or start a walkthrough.</div>`; return; }
+  const [w, h] = CreativePieceMachine.FORMATS[p.format];
+  const layers = p.doc.slides[0].layers;
+  const logo = layers.find(l => l.type === "logo");
+  const inner = layers.filter(l => l.type !== "logo").map(l => {
+    if (l.type === "text") {
+      const size = (l.text || "").length > 60 ? 13 : 17;
+      return `<div class="txt ${isOffKit(l.color) ? "offkit" : ""}" style="color:${resolve(l.color)};font-family:'${resolve(l.font) || "Georgia"}',Georgia,serif;font-size:${size}px">${esc(l.text || "…")}</div>`;
+    }
+    return `<div class="shp ${isOffKit(l.color) ? "offkit" : ""}" style="background:${resolve(l.color)}"></div>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="canvas-frame">
+      <div class="canvas" style="aspect-ratio:${w}/${h};background:${resolve("brand.surface")}">
+        ${logo ? `<div class="logo-chip ${isOffKit(logo.color) ? "offkit" : ""}" style="background:${resolve(logo.color)}">LOGO</div>` : ""}
+        <div class="spacer" style="max-height:26px"></div>
+        ${inner}
+        <div class="spacer"></div>
+      </div>
+    </div>
+    <div class="preview-meta">
+      <strong>${esc(p.title)}</strong>
+      <span class="status st-${p.status}">${p.status}</span>
+      <span class="tag">v${p.version}</span>
+      <span class="tag">${p.format}</span>
+      ${p.pinnedKitVersion ? `<span class="tag">pinned to kit v${p.pinnedKitVersion}</span>` : ""}
+      ${p.brandOutdated ? `<span class="tag bad">brand-outdated</span>` : ""}
+      ${p.plannedDate ? `<span class="tag">📅 ${p.plannedDate}</span>` : ""}
+    </div>
+    <div class="lifecycle">
+      ${LIFECYCLE.map((s, i) => {
+        const idx = LIFECYCLE.indexOf(p.status);
+        return `<span class="st ${s === p.status ? "here" : i < idx ? "past" : ""}">${s}</span>${i < LIFECYCLE.length - 1 ? '<span class="arrow">›</span>' : ""}`;
+      }).join("")}
+    </div>`;
 }
 
-function render() {
-  // Brand Kit
+/* ---------- Brand kit ---------- */
+function renderBrand() {
   const kit = state.brandKit;
-  document.getElementById("brandPanel").innerHTML = `
-    <h3>Brand Kit <span class="tag">v${kit.version}</span></h3>
+  document.getElementById("brand").innerHTML = `
     <table>${Object.entries(kit.tokens).map(([k, v]) =>
       `<tr><td>${esc(k)}</td><td>${/^#/.test(v) ? `<span class="swatch" style="background:${v}"></span>` : ""}${esc(v)}</td></tr>`).join("")}
     </table>
-    <p class="small">Templates saved: ${state.templates.length ? state.templates.map(t => esc(t.name)).join(", ") : "none"}</p>`;
-
-  // Backlog + calendar
-  const pieces = Object.values(state.pieces);
-  const backlog = pieces.filter(p => !p.plannedDate && !["exported", "measured"].includes(p.status));
-  const planned = pieces.filter(p => p.plannedDate);
-  document.getElementById("planPanel").innerHTML = `
-    <h3>Content Backlog (undated) & Calendar</h3>
-    <p class="small">Backlog: ${backlog.length ? backlog.map(p => `“${esc(p.title)}” (${p.status})`).join(", ") : "empty"}</p>
-    <p class="small">Calendar: ${planned.length ? planned.map(p => `${p.plannedDate} — “${esc(p.title)}” (${p.status})`).join("; ") : "nothing planned"}</p>
-    <p class="small">A date on the calendar is a plan. Nothing here publishes anything.</p>`;
-
-  // Pieces table
-  document.getElementById("piecesPanel").innerHTML = `
-    <h3>Creative Pieces <span class="small">(click a row to focus it)</span></h3>
-    ${pieces.length ? `<table><tr><th>#</th><th>Title</th><th>Status</th><th>Version</th><th>Planned</th><th>Kit pin</th><th></th></tr>
-      ${pieces.map(p => `<tr class="${p.id === selectedId ? "sel" : ""}" onclick="selectedId=${p.id};render()" style="cursor:pointer">
-        <td>${p.id}</td><td>${esc(p.title)}</td>
-        <td><span class="tag">${p.status}</span></td>
-        <td>v${p.version}</td>
-        <td>${p.plannedDate || "—"}</td>
-        <td>${p.pinnedKitVersion ? "kit v" + p.pinnedKitVersion : "—"}</td>
-        <td>${p.brandOutdated ? '<span class="tag bad">brand-outdated</span>' : ""}</td>
-      </tr>`).join("")}</table>` : `<p class="small">No pieces yet. Create one below or start a walkthrough.</p>`}`;
-
-  // Focused piece detail
-  const p = sel();
-  document.getElementById("detailPanel").innerHTML = !p ? `<h3>Focused piece</h3><p class="small">Nothing focused.</p>` : `
-    <h3>Focused: “${esc(p.title)}” <span class="tag">${p.status}</span> <span class="tag">v${p.version}</span> <span class="tag">${p.format}</span>
-      ${p.brandOutdated ? '<span class="tag bad">brand-outdated</span>' : ""}</h3>
-    <div class="cols">
-      <div>
-        <h3>Document (slide 1 layers)</h3>
-        <table><tr><th>Layer</th><th>Type</th><th>Color</th><th>Content</th></tr>
-        ${p.doc.slides[0].layers.map(l => `<tr><td>${l.id}</td><td>${l.type}</td>
-          <td>${l.color ? tokenSwatch(state.brandKit, l.color) : "—"}${l.color && /^#/.test(l.color) ? ' <span class="tag bad">off-kit</span>' : ""}</td>
-          <td>${l.type === "text" ? esc(l.text || "(empty)") : "—"}</td></tr>`).join("")}</table>
-        <h3>Captions</h3>
-        <table>${Object.entries(p.doc.captions).map(([n, c]) => `<tr><td>${n}</td><td>${c ? esc(c) : "—"}</td></tr>`).join("")}</table>
-      </div>
-      <div>
-        <h3>Version history</h3>
-        <table>${p.history.slice().reverse().map(h => `<tr><td>v${h.version}</td><td>${esc(h.summary)}</td></tr>`).join("")}</table>
-        <h3>Last checks ${p.lastChecks ? `<span class="small">(doc v${p.lastChecks.atVersion}, kit v${p.lastChecks.kitVersion})</span>` : ""}</h3>
-        ${p.lastChecks ? `
-          ${p.lastChecks.brand.errors.map(e => `<div class="small" style="color:#b42318">brand error: ${esc(e)}</div>`).join("")}
-          ${p.lastChecks.brand.warnings.map(w => `<div class="small" style="color:#92400e">brand warning: ${esc(w)}</div>`).join("")}
-          ${p.lastChecks.quality.map(q => `<div class="small">quality finding (advisory): ${esc(q)}</div>`).join("")}
-          ${!p.lastChecks.brand.errors.length && !p.lastChecks.brand.warnings.length && !p.lastChecks.quality.length ? '<div class="small">All clear.</div>' : ""}
-        ` : '<div class="small">Not run yet.</div>'}
-        ${p.exportBundle ? `<h3>Export bundle</h3><div class="small">${p.exportBundle.files.map(esc).join("<br>")}<br>rendered at doc v${p.exportBundle.renderedAtVersion}, kit v${p.exportBundle.kitVersion}</div>` : ""}
-        ${p.outcome ? `<h3>Outcome</h3><div class="small">${esc(p.outcome)}</div>` : ""}
-      </div>
-    </div>`;
-
-  // Free play
-  const v = p ? p.version : 0;
-  document.getElementById("freePanel").innerHTML = `
-    <h3>Anywhere</h3>
-    <button class="primary" onclick='dispatch({type:"CREATE_PIECE",title:"KeepAnalog launch teaser",format:"4:5",headline:"Your notes deserve paper"})'>Create piece from Creative Brief</button>
-    <button onclick='dispatch({type:"UPDATE_BRAND_KIT",tokens:{"brand.primary":"#8A4FFF"}})'>Change Brand Kit primary color</button>
-    ${p ? `
-    <h3>On the focused piece</h3>
-    <button onclick='dispatch({type:"START_DRAFTING",id:${p.id}})'>Start drafting</button>
-    <button onclick='dispatch({type:"APPLY_EDIT_BATCH",id:${p.id},baseVersion:${v},actor:"Operator",ops:[{op:"set_text",layer:${p.doc.slides[0].layers[0] ? p.doc.slides[0].layers[0].id : 0},value:"Fresh headline, v${v + 1}"},{op:"set_caption",network:"instagram",value:"New caption for IG"}]})'>Apply on-brand edit batch (base v${v})</button>
-    <button onclick='dispatch({type:"APPLY_EDIT_BATCH",id:${p.id},baseVersion:${v},actor:"AI Host",ops:[{op:"add_layer",layerType:"shape",color:"#FF2D95"}]})'>AI Host adds off-brand layer</button>
-    <button onclick='dispatch({type:"APPLY_EDIT_BATCH",id:${p.id},baseVersion:${Math.max(1, v - 1)},actor:"AI Host",ops:[{op:"set_caption",network:"x",value:"stale write"}]})'>AI Host sends stale batch (base v${Math.max(1, v - 1)})</button>
-    <button onclick='dispatch({type:"RESTORE_VERSION",id:${p.id},version:1})'>Restore version 1</button>
-    <button onclick='dispatch({type:"RUN_CHECKS",id:${p.id}})'>Run brand + quality checks</button>
-    <button onclick='dispatch({type:"SUBMIT_REVIEW",id:${p.id}})'>Submit for review</button>
-    <button onclick='dispatch({type:"REQUEST_CHANGES",id:${p.id}})'>Request changes</button>
-    <button onclick='dispatch({type:"APPROVE",id:${p.id}})'>Approve</button>
-    <button onclick='dispatch({type:"PLAN",id:${p.id},date:"2026-09-05"})'>Plan for Sep 5</button>
-    <button onclick='dispatch({type:"UNPLAN",id:${p.id}})'>Unplan</button>
-    <button onclick='dispatch({type:"REAPPROVE",id:${p.id}})'>Re-approve after kit change</button>
-    <button onclick='dispatch({type:"EXPORT",id:${p.id}})'>Export PNG bundle</button>
-    <button onclick='dispatch({type:"RECORD_OUTCOME",id:${p.id},note:"212 profile visits, 9 signups (manual)"})'>Record outcome</button>
-    <button onclick='dispatch({type:"REOPEN",id:${p.id}})'>Reopen to drafting</button>
-    <button onclick='dispatch({type:"SAVE_AS_TEMPLATE",id:${p.id}})'>Save as Creative Template</button>` : ""}`;
-
-  // Log
-  document.getElementById("log").innerHTML =
-    logEntries.slice(0, 60).map(e => `<div class="${e.kind}">${esc(e.text)}</div>`).join("") || '<div class="small">Nothing yet.</div>';
-
-  renderScenario();
+    <div style="margin-top:10px">
+      <span class="tag">Brand Kit v${kit.version}</span>
+      <button class="act" style="margin-left:8px" onclick='dispatch({type:"UPDATE_BRAND_KIT",tokens:{"brand.primary":"${kit.tokens["brand.primary"] === "#1A6B54" ? "#8A4FFF" : "#1A6B54"}"}}, "Operator changes the Brand Kit primary color")'>Change primary color</button>
+    </div>
+    <p class="small" style="margin-bottom:0">Templates saved: ${state.templates.length ? state.templates.map(t => esc(t.name)).join(", ") : "none yet"}</p>`;
 }
 
-/* -------- Guided walkthroughs -------- */
+/* ---------- Actions (contextual) ---------- */
+function renderActions() {
+  const p = sel();
+  const flashEl = document.getElementById("flash");
+  flashEl.innerHTML = lastFlash ? `<div class="flash ${lastFlash.kind}">${esc(lastFlash.text)}</div>` : "";
+  const btn = (label, action, cls = "") =>
+    `<button class="act ${cls}" onclick='dispatch(${JSON.stringify(action)}, ${JSON.stringify(label)})'>${esc(label)}</button>`;
+  const dyn = (label, fn, cls = "") => { dynActions[dynActions.length] = fn; return `<button class="act ${cls}" onclick='runDyn(${dynActions.length - 1}, ${JSON.stringify(label)})'>${esc(label)}</button>`; };
+
+  dynActions = [];
+  let next = "", edges = "";
+  if (p) {
+    const v = p.version;
+    const headlineLayer = p.doc.slides[0].layers.find(l => l.type === "text");
+    switch (p.status) {
+      case "backlog":
+        next = btn("Start drafting", { type: "START_DRAFTING", id: p.id }, "primary");
+        break;
+      case "drafting":
+        next =
+          dyn("Operator edits headline + IG caption", () => ({ type: "APPLY_EDIT_BATCH", id: p.id, baseVersion: sel().version, actor: "Operator", ops: [
+            { op: "set_text", layer: headlineLayer ? headlineLayer.id : 0, value: "Ship your ideas on paper — v" + (sel().version + 1) },
+            { op: "set_caption", network: "instagram", value: "Analog thinking, digital reach." }] }), "primary") +
+          dyn("Run brand + quality checks", () => ({ type: "RUN_CHECKS", id: p.id })) +
+          btn("Submit for review", { type: "SUBMIT_REVIEW", id: p.id }, "primary");
+        break;
+      case "review":
+        next = btn("Approve", { type: "APPROVE", id: p.id }, "primary") +
+               btn("Request changes", { type: "REQUEST_CHANGES", id: p.id });
+        break;
+      case "approved":
+        next = btn("Plan for Sep 5", { type: "PLAN", id: p.id, date: "2026-09-05" }, "primary") +
+               (p.brandOutdated ? btn("Re-approve against new kit", { type: "REAPPROVE", id: p.id }, "primary") : "") +
+               btn("Reopen to drafting", { type: "REOPEN", id: p.id });
+        break;
+      case "planned":
+        next = btn("Export PNG bundle", { type: "EXPORT", id: p.id }, "primary") +
+               (p.brandOutdated ? btn("Re-approve against new kit", { type: "REAPPROVE", id: p.id }, "primary") : "") +
+               btn("Unplan", { type: "UNPLAN", id: p.id }) +
+               btn("Reopen to drafting", { type: "REOPEN", id: p.id });
+        break;
+      case "exported":
+        next = dyn("Record manual outcome", () => ({ type: "RECORD_OUTCOME", id: p.id, note: "212 profile visits, 9 signups (manual)" }), "primary");
+        break;
+      case "measured":
+        next = `<span class="small">This piece finished its route. Save it as a template or create the next one.</span>`;
+        break;
+    }
+    next += btn("Save as Creative Template", { type: "SAVE_AS_TEMPLATE", id: p.id });
+
+    edges =
+      dyn("AI Host adds an off-brand pink layer", () => ({ type: "APPLY_EDIT_BATCH", id: p.id, baseVersion: sel().version, actor: "AI Host", ops: [
+        { op: "add_layer", layerType: "shape", color: "#FF2D95" }] }), "danger") +
+      dyn("AI Host writes against a stale version", () => ({ type: "APPLY_EDIT_BATCH", id: p.id, baseVersion: Math.max(1, sel().version - 1), actor: "AI Host", ops: [
+        { op: "set_caption", network: "x", value: "stale write" }] }), "danger") +
+      dyn("Fix off-brand layers back to tokens", () => {
+        const bad = sel().doc.slides[0].layers.filter(l => /^#/.test(l.color || "") && !Object.values(state.brandKit.tokens).includes(l.color));
+        return { type: "APPLY_EDIT_BATCH", id: p.id, baseVersion: sel().version, actor: "Operator",
+          ops: bad.length ? bad.map(l => ({ op: "set_layer_color", layer: l.id, value: "brand.primary" })) : [{ op: "set_caption", network: "linkedin", value: "nothing to fix" }] };
+      }) +
+      btn("Try to export right now", { type: "EXPORT", id: p.id }, "danger") +
+      btn("Try to plan right now", { type: "PLAN", id: p.id, date: "2026-09-10" }, "danger") +
+      dyn("Restore version 1", () => ({ type: "RESTORE_VERSION", id: p.id, version: 1 }));
+  }
+
+  document.getElementById("actions").innerHTML = `
+    <div class="group">
+      <div class="group-label">Create</div>
+      ${btn("New piece from Creative Brief", { type: "CREATE_PIECE", title: "KeepAnalog launch teaser", format: "4:5", headline: "Your notes deserve paper" }, p ? "" : "primary")}
+    </div>
+    ${p ? `
+    <div class="group">
+      <div class="group-label">Next steps for “${esc(p.title)}”</div>
+      ${next}
+    </div>
+    <div class="group">
+      <div class="group-label">Poke the guardrails (expect refusals)</div>
+      ${edges}
+    </div>` : `<p class="small">Create a piece to see its available actions.</p>`}`;
+}
+let dynActions = [];
+function runDyn(i, label) { dispatch(dynActions[i](), label); }
+
+/* ---------- Studio ---------- */
+function renderStudio() {
+  const pieces = Object.values(state.pieces);
+  const backlog = pieces.filter(p => !p.plannedDate && !["exported", "measured"].includes(p.status));
+  const days = ["2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10"];
+  document.getElementById("studio").innerHTML = `
+    ${pieces.length ? pieces.map(p => `
+      <div class="piece-row ${p.id === selectedId ? "sel" : ""}" onclick="selectedId=${p.id};render()">
+        <span class="title">${esc(p.title)}</span>
+        ${p.brandOutdated ? '<span class="tag bad">brand-outdated</span>' : ""}
+        <span class="meta">v${p.version}${p.plannedDate ? " · " + p.plannedDate : ""}</span>
+        <span class="status st-${p.status}">${p.status}</span>
+      </div>`).join("") : '<p class="small">No Creative Pieces yet.</p>'}
+    <div style="margin-top:14px">
+      <div class="group-label" style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Calendar — a plan, not a publishing queue</div>
+      <div class="cal-strip">
+        ${days.map(d => {
+          const on = pieces.filter(p => p.plannedDate === d);
+          return `<div class="cal-day ${on.length ? "has" : ""}"><div class="d">${d.slice(5)}</div>${on.map(p => `<div class="p">${esc(p.title)}</div>`).join("") || '<div>—</div>'}</div>`;
+        }).join("")}
+      </div>
+      <p class="small" style="margin:8px 0 0">Backlog (undated): ${backlog.length ? backlog.map(p => `“${esc(p.title)}”`).join(", ") : "empty"}</p>
+    </div>`;
+}
+
+/* ---------- Detail ---------- */
+function renderDetail() {
+  const p = sel();
+  const el = document.getElementById("detail");
+  if (!p) { el.innerHTML = '<p class="small">Nothing focused.</p>'; return; }
+  const checks = p.lastChecks;
+  el.innerHTML = `
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:16px;margin-top:0">
+      <div>
+        <div class="group-label" style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Version history</div>
+        <table>${p.history.slice().reverse().slice(0, 6).map(h => `<tr><td style="white-space:nowrap"><span class="tag">v${h.version}</span></td><td>${esc(h.summary)}</td></tr>`).join("")}</table>
+        <div class="group-label" style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 8px">Captions</div>
+        <table>${Object.entries(p.doc.captions).map(([n, c]) => `<tr><td>${n}</td><td>${c ? esc(c) : '<span class="muted">—</span>'}</td></tr>`).join("")}</table>
+      </div>
+      <div>
+        <div class="group-label" style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Checks ${checks ? `(doc v${checks.atVersion}, kit v${checks.kitVersion})` : ""}</div>
+        ${checks ? `
+          ${checks.brand.errors.map(e => `<div class="finding err">brand error — ${esc(e)}</div>`).join("")}
+          ${checks.brand.warnings.map(w => `<div class="finding warn">brand warning — ${esc(w)}</div>`).join("")}
+          ${checks.quality.map(q => `<div class="finding q">quality (advisory) — ${esc(q)}</div>`).join("")}
+          ${!checks.brand.errors.length && !checks.brand.warnings.length && !checks.quality.length ? '<div class="finding ok">All clear.</div>' : ""}
+        ` : '<p class="small">Checks not run yet. Approval runs them automatically.</p>'}
+        ${p.exportBundle ? `
+          <div class="group-label" style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 8px">Export bundle</div>
+          <div class="small">${p.exportBundle.files.map(esc).join("<br>")}<br>rendered at doc v${p.exportBundle.renderedAtVersion}, kit v${p.exportBundle.kitVersion}</div>` : ""}
+        ${p.outcome ? `
+          <div class="group-label" style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 8px">Outcome</div>
+          <div class="small">${esc(p.outcome)}</div>` : ""}
+      </div>
+    </div>`;
+}
+
+/* ---------- Walkthroughs ---------- */
 const scenarios = [
   {
     name: "1 · Happy path",
-    blurb: "The full route: a Creative Brief becomes a backlog piece, gets drafted and captioned, passes checks, is reviewed, approved, planned on the calendar, exported as a PNG bundle, and finally measured. Watch the version counter and the status tag move.",
+    blurb: "The full route: a Creative Brief becomes a backlog piece, gets drafted and captioned, passes checks, is reviewed, approved, planned on the calendar, exported as a PNG bundle, and measured. Watch the preview, the version counter, and the lifecycle stepper move.",
     steps: () => [
       ["Create piece from Creative Brief", { type: "CREATE_PIECE", title: "KeepAnalog launch teaser", format: "4:5", headline: "Your notes deserve paper" }],
       ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
@@ -510,7 +710,7 @@ const scenarios = [
   },
   {
     name: "2 · Stale AI-Host write",
-    blurb: "The Operator and the AI Host share one document. The Operator saves first, so the AI Host's batch carries a stale base version. The model must reject it with a version_conflict instead of silently overwriting the human save; a retry against the fresh version succeeds.",
+    blurb: "The Operator and the AI Host share one document. The Operator saves first, so the AI Host's batch carries a stale base version. The model rejects it with a version_conflict instead of silently overwriting the human save; a retry against the fresh version succeeds.",
     steps: () => [
       ["Create piece", { type: "CREATE_PIECE", title: "partnr feature post", format: "1:1", headline: "Split the work, not the friendship" }],
       ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
@@ -524,7 +724,7 @@ const scenarios = [
   },
   {
     name: "3 · Brand errors gate approval",
-    blurb: "An off-kit raw color sneaks in. check_brand reports it as an error, and approval is blocked until it's fixed. Meanwhile a heuristic quality finding (crowded slide) stays advisory: the piece approves with it still open. Deterministic facts gate; heuristics advise.",
+    blurb: "An off-kit raw pink sneaks in (dashed red outline in the preview). check_brand reports it as an error and approval is blocked until it's fixed. The crowded-slide quality finding stays advisory: the piece approves with it still open. Deterministic facts gate; heuristics advise.",
     steps: () => [
       ["Create piece", { type: "CREATE_PIECE", title: "VinylOS drop announcement", format: "9:16", headline: "Press play on wax" }],
       ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
@@ -545,14 +745,14 @@ const scenarios = [
   },
   {
     name: "4 · Brand Kit change after approval",
-    blurb: "A piece is approved and planned, then the Brand Kit's primary color changes. Drafts repaint live, but the approved piece is flagged brand-outdated and export is blocked: approval means the Operator saw that exact rendering. Re-approval re-pins the kit and unblocks export.",
+    blurb: "A piece is approved and planned, then the Brand Kit's primary color changes. Watch the preview repaint instantly (it only holds token references), while the approved piece is flagged brand-outdated and export is blocked: approval means the Operator saw that exact rendering. Re-approval re-pins the kit and unblocks export.",
     steps: () => [
       ["Create piece", { type: "CREATE_PIECE", title: "KeepAnalog carousel", format: "4:5", headline: "Five reasons paper wins" }],
       ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
       ["Submit for review", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
       ["Approve (pins kit v1)", () => ({ type: "APPROVE", id: selectedId })],
       ["Plan for Sep 5", () => ({ type: "PLAN", id: selectedId, date: "2026-09-05" })],
-      ["Brand Kit primary changes → piece flagged", { type: "UPDATE_BRAND_KIT", tokens: { "brand.primary": "#8A4FFF" } }],
+      ["Brand Kit primary changes → preview repaints, piece flagged", { type: "UPDATE_BRAND_KIT", tokens: { "brand.primary": "#8A4FFF" } }],
       ["Try to export → blocked while brand-outdated", () => ({ type: "EXPORT", id: selectedId })],
       ["Re-approve → re-pins to kit v2", () => ({ type: "REAPPROVE", id: selectedId })],
       ["Export → succeeds", () => ({ type: "EXPORT", id: selectedId })]
@@ -560,7 +760,7 @@ const scenarios = [
   },
   {
     name: "5 · Illegal moves",
-    blurb: "Attempts the model must refuse: planning before approval, exporting from drafting, editing an approved piece without reopening it, and a batch with an unknown operation. Each rejection should leave the piece exactly as it was. Then: restore-creates-new-version and strip-and-save templates.",
+    blurb: "Attempts the model must refuse: planning before approval, exporting from drafting, editing an approved piece without reopening it, and a batch with an unknown operation. Each rejection leaves the piece exactly as it was. Then: restore-creates-new-version and strip-and-save templates.",
     steps: () => [
       ["Create piece", { type: "CREATE_PIECE", title: "partnr story", format: "9:16", headline: "Who owes what, settled" }],
       ["Try to plan while in backlog → refused", () => ({ type: "PLAN", id: selectedId, date: "2026-09-10" })],
@@ -570,12 +770,12 @@ const scenarios = [
         { op: "set_caption", network: "linkedin", value: "fine op" }, { op: "explode_layer", layer: 1 }] })],
       ["Real edit (v1 → v2)", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "Operator", ops: [
         { op: "set_text", layer: sel().doc.slides[0].layers[0].id, value: "Settle up in one tap" }] })],
-      ["Submit + approve", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
+      ["Submit for review", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
       ["Approve", () => ({ type: "APPROVE", id: selectedId })],
       ["Try to edit approved piece → refused", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "AI Host", ops: [
         { op: "set_caption", network: "tiktok", value: "sneaky post-approval edit" }] })],
       ["Reopen to drafting (clears approval)", () => ({ type: "REOPEN", id: selectedId })],
-      ["Restore v1 → becomes new v3", () => ({ type: "RESTORE_VERSION", id: selectedId, version: 1 })],
+      ["Restore v1 → becomes a new version", () => ({ type: "RESTORE_VERSION", id: selectedId, version: 1 })],
       ["Save as Creative Template (stripped)", () => ({ type: "SAVE_AS_TEMPLATE", id: selectedId })]
     ]
   }
@@ -589,7 +789,8 @@ function startScenario(i) {
   scenarioStep = 0;
   state = CreativePieceMachine.initialState();
   selectedId = null;
-  logEntries = [{ kind: "info", text: `— Reset to a fresh workspace for walkthrough “${scenarios[i].name}” —` }];
+  lastFlash = null;
+  feed = [{ kind: "info", text: `— Fresh workspace for walkthrough “${scenarios[i].name}” —` }];
   render();
 }
 
@@ -606,16 +807,25 @@ function renderScenario() {
   document.getElementById("tabs").innerHTML = scenarios.map((s, i) =>
     `<button class="${i === activeScenario ? "active" : ""}" onclick="startScenario(${i})">${esc(s.name)}</button>`).join("");
   const s = scenarios[activeScenario];
-  document.getElementById("scenario").innerHTML = `
-    <p>${esc(s.blurb)}</p>
-    <div class="steps">${s.steps().map((st, i) =>
-      `<button class="step ${i < scenarioStep ? "done" : i === scenarioStep ? "next" : ""}" onclick="runStep(${i})">${i + 1}. ${esc(st[0])}</button>`).join("")}
-    </div>
-    ${scenarioStep >= s.steps().length ? '<p class="small">Walkthrough complete. Free-play below, or pick another tab (each tab resets the workspace).</p>' : ""}`;
+  document.getElementById("blurb").textContent = s.blurb;
+  document.getElementById("steps").innerHTML = s.steps().map((st, i) =>
+    `<button class="${i < scenarioStep ? "done" : i === scenarioStep ? "next" : ""}" ${i === scenarioStep ? `onclick="runStep(${i})"` : ""}><span class="n">${i < scenarioStep ? "✓" : i + 1}</span>${esc(st[0])}</button>`).join("");
+  document.getElementById("scenarioDone").innerHTML =
+    scenarioStep >= s.steps().length ? '<p class="scenario-done">Walkthrough complete. Keep driving from the actions panel, or pick another tab (each tab resets the workspace).</p>' : "";
+}
+
+function render() {
+  renderPreview();
+  renderBrand();
+  renderActions();
+  renderStudio();
+  renderDetail();
+  document.getElementById("feed").innerHTML =
+    feed.slice(0, 80).map(e => `<div class="${e.kind}">${esc(e.text)}</div>`).join("") || '<div class="muted">Nothing yet.</div>';
+  renderScenario();
 }
 
 startScenario(0);
 </script>
-</main>
 </body>
 </html>
