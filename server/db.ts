@@ -142,6 +142,26 @@ function migrate(d: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS piece_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      piece_id INTEGER NOT NULL REFERENCES pieces(id),
+      version INTEGER NOT NULL,
+      actor TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      doc TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (piece_id, version)
+    );
+    CREATE TRIGGER IF NOT EXISTS piece_versions_no_update
+    BEFORE UPDATE ON piece_versions
+    BEGIN
+      SELECT RAISE(ABORT, 'piece_versions is append-only');
+    END;
+    CREATE TRIGGER IF NOT EXISTS piece_versions_no_delete
+    BEFORE DELETE ON piece_versions
+    BEGIN
+      SELECT RAISE(ABORT, 'piece_versions is append-only');
+    END;
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,

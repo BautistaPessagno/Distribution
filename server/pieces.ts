@@ -44,15 +44,17 @@ const frameSchema = z
   })
   .optional();
 
-const layerSchema = z.discriminatedUnion("type", [
+export const pieceLayerSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string(), role: z.string().optional(), frame: frameSchema }),
   z.object({ type: z.literal("image"), ref: z.string(), alt: z.string().optional(), frame: frameSchema }),
   z.object({ type: z.literal("shape"), shape: z.string(), fill: z.string().optional(), frame: frameSchema }),
   z.object({ type: z.literal("logo"), variant: z.string().optional(), frame: frameSchema }),
 ]);
 
+export type PieceLayer = z.infer<typeof pieceLayerSchema>;
+
 const slideSchema = z.object({
-  layers: z.array(layerSchema),
+  layers: z.array(pieceLayerSchema),
 });
 
 const captionsSchema = z.object({
@@ -168,11 +170,18 @@ export function createPiece(sessionKey: string, input: unknown): GatewayResult {
   }
 
   const { title, doc } = parsed.data;
-  const info = getDb()
-    .prepare(
-      "INSERT INTO pieces (project_id, title, snapshot, doc) VALUES (?, ?, ?, ?)"
-    )
-    .run(pinned.projectId, title, pinned.snapshotId, JSON.stringify(doc));
+  const db = getDb();
+  const info = db.transaction(() => {
+    const inserted = db
+      .prepare(
+        "INSERT INTO pieces (project_id, title, snapshot, doc) VALUES (?, ?, ?, ?)"
+      )
+      .run(pinned.projectId, title, pinned.snapshotId, JSON.stringify(doc));
+    db.prepare(
+      "INSERT INTO piece_versions (piece_id, version, actor, summary, doc) VALUES (?, 1, 'ai-host', 'Created', ?)"
+    ).run(Number(inserted.lastInsertRowid), JSON.stringify(doc));
+    return inserted;
+  })();
   const piece = getPieceById(Number(info.lastInsertRowid));
   if (!piece) throw new Error("piece insert did not persist");
 
