@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Creative Piece workflow — logic prototype (PROTOTYPE, throwaway)</title>
+<style>
+  :root { --accent: #1a6b54; --ink: #21252b; --muted: #6b7280; --line: #e5e7eb; --bg: #fafaf8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 1060px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 36px 0 10px; }
+  h3 { font-size: 14px; margin: 14px 0 6px; }
+  .intro { color: var(--muted); max-width: 76ch; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .panel h3 { margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #eef2f0; color: var(--accent); }
+  .tag.bad { background: #fdecec; color: #b42318; }
+  .tag.warn { background: #fef3e2; color: #92400e; }
+  button { font: inherit; font-size: 13.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; margin: 2px 4px 2px 0; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: .9; color: #fff; }
+  button.step.done { opacity: .45; text-decoration: line-through; }
+  button.step.next { border-color: var(--accent); box-shadow: 0 0 0 2px #1a6b5433; }
+  .log { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; max-height: 220px; overflow: auto; font-size: 13px; }
+  .log div { padding: 2px 0; border-bottom: 1px dashed #f0f0ee; }
+  .log .error { color: #b42318; }
+  .log .warn { color: #92400e; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; border: 1px solid #0002; margin-right: 4px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .scenario p { margin: 6px 0 10px; color: var(--muted); max-width: 80ch; }
+  .steps { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .small { font-size: 12.5px; color: var(--muted); }
+  .free h3 { margin-bottom: 4px; }
+  .banner { background: #fff8ec; border: 1px solid #f2e2bf; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; margin: 14px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Creative Piece workflow — logic prototype</h1>
+  <p class="intro"><strong>The question this demo answers:</strong> does the chosen Creative Piece workflow feel right once you push it through real cases? The model under test: lifecycle <em>backlog → drafting → review → approved → planned → exported → measured</em> (with changes-requested back to drafting), atomic edit batches with optimistic concurrency (stale base version rejected), Brand Kit tokens that repaint drafts live but flag approved work as brand-outdated until re-approval, brand-check errors blocking approval while quality findings only advise, strip-and-save templates, and PNG-bundle export. Poke at it freely or run the guided walkthroughs.</p>
+  <p class="banner">PROTOTYPE, throwaway. State lives in memory only; reload to reset everything.</p>
+
+  <h2>Guided walkthroughs</h2>
+  <div class="panel">
+    <div class="tabs" id="tabs"></div>
+    <div class="scenario" id="scenario"></div>
+  </div>
+
+  <h2>Current state</h2>
+  <div class="cols">
+    <div class="panel" id="brandPanel"></div>
+    <div class="panel" id="planPanel"></div>
+  </div>
+  <div class="panel" style="margin-top:20px" id="piecesPanel"></div>
+  <div class="panel" style="margin-top:20px" id="detailPanel"></div>
+
+  <h2>Free play</h2>
+  <div class="panel free" id="freePanel"></div>
+
+  <h2>What just happened</h2>
+  <div class="log" id="log"></div>
+
+<script>
+/* ============================================================
+   Pure module: CreativePieceMachine
+   No DOM access. reduce(state, action) -> { state, ok, messages }
+   This block is the liftable part; the page below is throwaway.
+   ============================================================ */
+const CreativePieceMachine = (() => {
+  const FORMATS = { "4:5": [1080, 1350], "1:1": [1080, 1080], "9:16": [1080, 1920], "16:9": [1920, 1080] };
+  const NETWORKS = ["instagram", "x", "linkedin", "tiktok"];
+  const MAX_OPS = 20;
+
+  function initialState() {
+    return {
+      brandKit: {
+        version: 1,
+        tokens: {
+          "brand.primary": "#1A6B54",
+          "brand.surface": "#F4EFE6",
+          "brand.ink": "#222222",
+          "font.display": "Marcellus",
+          "font.body": "Inter"
+        }
+      },
+      pieces: {},
+      templates: [],
+      nextPieceId: 1,
+      nextLayerId: 1
+    };
+  }
+
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const msg = (kind, text) => ({ kind, text });
+  const fail = (state, text) => ({ state, ok: false, messages: [msg("error", text)] });
+
+  function resolveColor(kit, value) {
+    return kit.tokens[value] || value; // token reference or raw value
+  }
+
+  function checkBrand(state, piece) {
+    const errors = [], warnings = [];
+    for (const slide of piece.doc.slides) {
+      for (const layer of slide.layers) {
+        if (layer.color && !state.brandKit.tokens[layer.color] && /^#/.test(layer.color)) {
+          errors.push(`Layer ${layer.id} uses raw color ${layer.color}, which is not a Brand Kit token.`);
+        }
+        if (layer.font && !Object.values(state.brandKit.tokens).includes(layer.font) && !state.brandKit.tokens[layer.font]) {
+          errors.push(`Layer ${layer.id} uses font "${layer.font}", which is not in the Brand Kit.`);
+        }
+        if (layer.type === "text" && (!layer.text || !layer.text.trim())) {
+          errors.push(`Layer ${layer.id} is an empty text layer.`);
+        }
+        if (layer.type === "text" && layer.text && layer.text.length > 120) {
+          warnings.push(`Layer ${layer.id} text is very long and may overflow.`);
+        }
+      }
+    }
+    return { errors, warnings };
+  }
+
+  function checkQuality(piece) {
+    const findings = [];
+    for (const [i, slide] of piece.doc.slides.entries()) {
+      if (slide.layers.length > 5) findings.push(`Slide ${i + 1} has ${slide.layers.length} layers; composition looks crowded.`);
+      if (slide.layers.length === 0) findings.push(`Slide ${i + 1} is empty.`);
+      if (!slide.layers.some(l => l.type === "text")) findings.push(`Slide ${i + 1} has no text; hierarchy is unclear.`);
+    }
+    return findings; // heuristic, advisory only, never a blocker
+  }
+
+  function snapshot(piece, summary) {
+    piece.history.push({ version: piece.version, summary, doc: clone(piece.doc) });
+  }
+
+  function reduce(prev, action) {
+    const state = clone(prev);
+    const messages = [];
+    const piece = action.id != null ? state.pieces[action.id] : null;
+    if (action.id != null && !piece) return fail(prev, `No Creative Piece #${action.id}.`);
+
+    switch (action.type) {
+
+      case "CREATE_PIECE": {
+        if (!FORMATS[action.format]) return fail(prev, `Unknown format ${action.format}.`);
+        const id = state.nextPieceId++;
+        const p = {
+          id, title: action.title, format: action.format,
+          status: "backlog", version: 1, plannedDate: null,
+          brandOutdated: false, pinnedKitVersion: null,
+          doc: {
+            schemaVersion: 1,
+            slides: [{ layers: [
+              { id: state.nextLayerId++, type: "text", text: action.headline || "Headline from the Creative Brief", color: "brand.ink", font: "font.display" },
+              { id: state.nextLayerId++, type: "shape", color: "brand.primary" },
+              { id: state.nextLayerId++, type: "logo", color: "brand.primary" }
+            ]}],
+            captions: { instagram: "", x: "", linkedin: "", tiktok: "" }
+          },
+          history: [], lastChecks: null, exportBundle: null, outcome: null
+        };
+        snapshot(p, "Created from Creative Brief");
+        state.pieces[id] = p;
+        messages.push(msg("info", `Created Creative Piece #${id} "${action.title}" (${action.format}) in the Content Backlog, version 1.`));
+        return { state, ok: true, messages };
+      }
+
+      case "START_DRAFTING": {
+        if (piece.status !== "backlog") return fail(prev, `Only a backlog piece can start drafting. "${piece.title}" is ${piece.status}.`);
+        piece.status = "drafting";
+        messages.push(msg("info", `"${piece.title}" moved backlog → drafting.`));
+        return { state, ok: true, messages };
+      }
+
+      case "APPLY_EDIT_BATCH": {
+        if (!["backlog", "drafting"].includes(piece.status))
+          return fail(prev, `Edits are rejected while "${piece.title}" is ${piece.status}. Reopen it to drafting first; approval means the Operator saw this exact document.`);
+        if (action.ops.length > MAX_OPS) return fail(prev, `Batch rejected: ${action.ops.length} operations exceed the limit of ${MAX_OPS}.`);
+        if (action.baseVersion !== piece.version)
+          return fail(prev, `version_conflict: batch was computed against version ${action.baseVersion}, but "${piece.title}" is at version ${piece.version}. Nothing changed; re-read the piece and retry.`);
+        // Structural validation first: any structural error rejects the whole batch.
+        for (const op of action.ops) {
+          if (!["set_text", "set_layer_color", "add_layer", "remove_layer", "set_caption"].includes(op.op))
+            return fail(prev, `Batch rejected: unknown operation "${op.op}". The whole batch was discarded; the piece is unchanged.`);
+          if (["set_text", "set_layer_color", "remove_layer"].includes(op.op) &&
+              !piece.doc.slides.some(s => s.layers.some(l => l.id === op.layer)))
+            return fail(prev, `Batch rejected: operation targets layer ${op.layer}, which does not exist. The whole batch was discarded.`);
+          if (op.op === "set_caption" && !NETWORKS.includes(op.network))
+            return fail(prev, `Batch rejected: unknown network "${op.network}".`);
+        }
+        // Apply atomically. Invalid cosmetic values fall back to a default and warn.
+        const summaries = [];
+        for (const op of action.ops) {
+          const layerOf = (id) => piece.doc.slides.flatMap(s => s.layers).find(l => l.id === id);
+          if (op.op === "set_text") { layerOf(op.layer).text = op.value; summaries.push(`text of layer ${op.layer}`); }
+          if (op.op === "set_layer_color") {
+            let color = op.value;
+            if (!/^(#([0-9a-fA-F]{6})|brand\.\w+)$/.test(color)) {
+              messages.push(msg("warn", `Cosmetic value "${color}" is invalid; fell back to brand.ink.`));
+              color = "brand.ink";
+            }
+            layerOf(op.layer).color = color; summaries.push(`color of layer ${op.layer}`);
+          }
+          if (op.op === "add_layer") {
+            const l = { id: state.nextLayerId++, type: op.layerType || "shape", color: op.color || "brand.primary" };
+            if (l.type === "text") { l.text = op.text || ""; l.font = op.font || "font.body"; }
+            piece.doc.slides[0].layers.push(l); summaries.push(`added ${l.type} layer ${l.id}`);
+          }
+          if (op.op === "remove_layer") {
+            for (const s of piece.doc.slides) s.layers = s.layers.filter(l => l.id !== op.layer);
+            summaries.push(`removed layer ${op.layer}`);
+          }
+          if (op.op === "set_caption") { piece.doc.captions[op.network] = op.value; summaries.push(`${op.network} caption`); }
+        }
+        piece.version += 1;
+        snapshot(piece, `Edit batch by ${action.actor || "Operator"}: ${summaries.join(", ")}`);
+        messages.push(msg("info", `Applied ${action.ops.length}-op batch from ${action.actor || "Operator"}. "${piece.title}" is now version ${piece.version}.`));
+        return { state, ok: true, messages };
+      }
+
+      case "RESTORE_VERSION": {
+        if (!["backlog", "drafting"].includes(piece.status))
+          return fail(prev, `Restore is an edit; reopen "${piece.title}" to drafting first.`);
+        const entry = piece.history.find(h => h.version === action.version);
+        if (!entry) return fail(prev, `No version ${action.version} in history.`);
+        piece.doc = clone(entry.doc);
+        piece.version += 1;
+        snapshot(piece, `Restored the document of version ${action.version}`);
+        messages.push(msg("info", `Restored version ${action.version} of "${piece.title}" as new version ${piece.version}. History stays append-only; nothing was rewritten.`));
+        return { state, ok: true, messages };
+      }
+
+      case "RUN_CHECKS": {
+        const brand = checkBrand(state, piece);
+        const quality = checkQuality(piece);
+        piece.lastChecks = { atVersion: piece.version, kitVersion: state.brandKit.version, brand, quality };
+        messages.push(msg(brand.errors.length ? "error" : "info",
+          `check_brand: ${brand.errors.length} error(s), ${brand.warnings.length} warning(s). check_quality: ${quality.length} finding(s). Quality findings advise; they never block.`));
+        return { state, ok: true, messages };
+      }
+
+      case "SUBMIT_REVIEW": {
+        if (piece.status !== "drafting") return fail(prev, `Only a drafting piece can be submitted. "${piece.title}" is ${piece.status}.`);
+        piece.status = "review";
+        messages.push(msg("info", `"${piece.title}" moved drafting → review.`));
+        return { state, ok: true, messages };
+      }
+
+      case "REQUEST_CHANGES": {
+        if (piece.status !== "review") return fail(prev, `Changes can only be requested in review.`);
+        piece.status = "drafting";
+        messages.push(msg("info", `Changes requested; "${piece.title}" moved review → drafting.`));
+        return { state, ok: true, messages };
+      }
+
+      case "APPROVE": {
+        if (piece.status !== "review") return fail(prev, `Approval happens in review. "${piece.title}" is ${piece.status}.`);
+        const brand = checkBrand(state, piece);
+        const quality = checkQuality(piece);
+        piece.lastChecks = { atVersion: piece.version, kitVersion: state.brandKit.version, brand, quality };
+        if (brand.errors.length)
+          return { state, ok: false, messages: [msg("error", `Approval blocked: check_brand found ${brand.errors.length} error(s). ${brand.errors.join(" ")}`)] };
+        piece.status = "approved";
+        piece.pinnedKitVersion = state.brandKit.version;
+        piece.brandOutdated = false;
+        messages.push(msg("info", `"${piece.title}" approved at version ${piece.version}, rendering pinned to Brand Kit v${state.brandKit.version}.`));
+        if (quality.length) messages.push(msg("warn", `Approved with ${quality.length} open quality finding(s); they advise, they do not block.`));
+        return { state, ok: true, messages };
+      }
+
+      case "PLAN": {
+        if (piece.status !== "approved") return fail(prev, `Only an approved piece can get a planned date. "${piece.title}" is ${piece.status}.`);
+        piece.status = "planned";
+        piece.plannedDate = action.date;
+        messages.push(msg("info", `"${piece.title}" planned for ${action.date}. A planned date is a plan; nothing publishes automatically.`));
+        return { state, ok: true, messages };
+      }
+
+      case "UNPLAN": {
+        if (piece.status !== "planned") return fail(prev, `"${piece.title}" has no planned date.`);
+        piece.status = "approved";
+        piece.plannedDate = null;
+        messages.push(msg("info", `"${piece.title}" unplanned; back to approved, undated.`));
+        return { state, ok: true, messages };
+      }
+
+      case "EXPORT": {
+        if (piece.status !== "planned") return fail(prev, `Export happens from planned. "${piece.title}" is ${piece.status}.`);
+        if (piece.brandOutdated)
+          return fail(prev, `Export blocked: the Brand Kit changed after approval (piece pinned to v${piece.pinnedKitVersion}, kit is v${state.brandKit.version}). Re-approve so the Operator sees the current rendering.`);
+        const [w, h] = FORMATS[piece.format];
+        piece.exportBundle = {
+          files: piece.doc.slides.map((_, i) => `piece-${piece.id}-slide-${i + 1}-${w}x${h}.png`).concat(["captions.txt"]),
+          renderedAtVersion: piece.version, kitVersion: piece.pinnedKitVersion
+        };
+        piece.status = "exported";
+        messages.push(msg("info", `Exported "${piece.title}": ${piece.exportBundle.files.join(", ")}. This bundle is what a distribution Work Order points at.`));
+        return { state, ok: true, messages };
+      }
+
+      case "RECORD_OUTCOME": {
+        if (piece.status !== "exported") return fail(prev, `Outcomes are recorded on exported pieces.`);
+        piece.outcome = action.note;
+        piece.status = "measured";
+        messages.push(msg("info", `Outcome recorded for "${piece.title}": ${action.note}.`));
+        return { state, ok: true, messages };
+      }
+
+      case "REOPEN": {
+        if (!["review", "approved", "planned"].includes(piece.status))
+          return fail(prev, `"${piece.title}" (${piece.status}) cannot be reopened.`);
+        const from = piece.status;
+        piece.status = "drafting";
+        piece.plannedDate = null;
+        piece.pinnedKitVersion = null;
+        piece.brandOutdated = false;
+        messages.push(msg("info", `"${piece.title}" reopened ${from} → drafting. Approval and planned date were cleared; it must pass review again.`));
+        return { state, ok: true, messages };
+      }
+
+      case "UPDATE_BRAND_KIT": {
+        state.brandKit.version += 1;
+        Object.assign(state.brandKit.tokens, action.tokens);
+        messages.push(msg("info", `Brand Kit is now v${state.brandKit.version}. Backlog and drafting pieces repaint live (they only hold token references).`));
+        for (const p of Object.values(state.pieces)) {
+          if (["approved", "planned"].includes(p.status)) {
+            p.brandOutdated = true;
+            messages.push(msg("warn", `"${p.title}" (${p.status}) is now brand-outdated: it was approved against Brand Kit v${p.pinnedKitVersion}. Re-approve to re-pin.`));
+          }
+        }
+        return { state, ok: true, messages };
+      }
+
+      case "REAPPROVE": {
+        if (!piece.brandOutdated) return fail(prev, `"${piece.title}" is not brand-outdated.`);
+        const brand = checkBrand(state, piece);
+        if (brand.errors.length)
+          return { state, ok: false, messages: [msg("error", `Re-approval blocked: check_brand found ${brand.errors.length} error(s) against the new kit. ${brand.errors.join(" ")}`)] };
+        piece.pinnedKitVersion = state.brandKit.version;
+        piece.brandOutdated = false;
+        messages.push(msg("info", `"${piece.title}" re-approved; rendering re-pinned to Brand Kit v${state.brandKit.version}. Its status (${piece.status}) and planned date are unchanged.`));
+        return { state, ok: true, messages };
+      }
+
+      case "SAVE_AS_TEMPLATE": {
+        const doc = clone(piece.doc);
+        for (const s of doc.slides) for (const l of s.layers) if (l.type === "text") l.text = "";
+        for (const n of NETWORKS) doc.captions[n] = "";
+        state.templates.push({ name: `${piece.title} layout`, fromPiece: piece.id, doc });
+        messages.push(msg("info", `Saved Creative Template "${piece.title} layout": layout and token references kept; campaign text, claims, captions, and planning data stripped.`));
+        return { state, ok: true, messages };
+      }
+
+      default:
+        return fail(prev, `Unknown action ${action.type}.`);
+    }
+  }
+
+  return { initialState, reduce, checkBrand, checkQuality, FORMATS };
+})();
+
+/* ============================================================
+   Throwaway page shell. Everything below renders state and
+   wires buttons; none of it is meant to outlive the prototype.
+   ============================================================ */
+let state = CreativePieceMachine.initialState();
+let selectedId = null;
+let logEntries = [];
+
+function dispatch(action, label) {
+  const res = CreativePieceMachine.reduce(state, action);
+  state = res.state;
+  if (action.type === "CREATE_PIECE" && res.ok) selectedId = state.nextPieceId - 1;
+  for (const m of res.messages) logEntries.unshift(m);
+  if (label && res.ok) logEntries.unshift({ kind: "info", text: `▶ ${label}` });
+  render();
+  return res.ok;
+}
+
+const sel = () => state.pieces[selectedId];
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function tokenSwatch(kit, ref) {
+  const v = kit.tokens[ref] || ref;
+  return /^#/.test(v) ? `<span class="swatch" style="background:${v}"></span>${esc(ref)}` : esc(ref);
+}
+
+function render() {
+  // Brand Kit
+  const kit = state.brandKit;
+  document.getElementById("brandPanel").innerHTML = `
+    <h3>Brand Kit <span class="tag">v${kit.version}</span></h3>
+    <table>${Object.entries(kit.tokens).map(([k, v]) =>
+      `<tr><td>${esc(k)}</td><td>${/^#/.test(v) ? `<span class="swatch" style="background:${v}"></span>` : ""}${esc(v)}</td></tr>`).join("")}
+    </table>
+    <p class="small">Templates saved: ${state.templates.length ? state.templates.map(t => esc(t.name)).join(", ") : "none"}</p>`;
+
+  // Backlog + calendar
+  const pieces = Object.values(state.pieces);
+  const backlog = pieces.filter(p => !p.plannedDate && !["exported", "measured"].includes(p.status));
+  const planned = pieces.filter(p => p.plannedDate);
+  document.getElementById("planPanel").innerHTML = `
+    <h3>Content Backlog (undated) & Calendar</h3>
+    <p class="small">Backlog: ${backlog.length ? backlog.map(p => `“${esc(p.title)}” (${p.status})`).join(", ") : "empty"}</p>
+    <p class="small">Calendar: ${planned.length ? planned.map(p => `${p.plannedDate} — “${esc(p.title)}” (${p.status})`).join("; ") : "nothing planned"}</p>
+    <p class="small">A date on the calendar is a plan. Nothing here publishes anything.</p>`;
+
+  // Pieces table
+  document.getElementById("piecesPanel").innerHTML = `
+    <h3>Creative Pieces <span class="small">(click a row to focus it)</span></h3>
+    ${pieces.length ? `<table><tr><th>#</th><th>Title</th><th>Status</th><th>Version</th><th>Planned</th><th>Kit pin</th><th></th></tr>
+      ${pieces.map(p => `<tr class="${p.id === selectedId ? "sel" : ""}" onclick="selectedId=${p.id};render()" style="cursor:pointer">
+        <td>${p.id}</td><td>${esc(p.title)}</td>
+        <td><span class="tag">${p.status}</span></td>
+        <td>v${p.version}</td>
+        <td>${p.plannedDate || "—"}</td>
+        <td>${p.pinnedKitVersion ? "kit v" + p.pinnedKitVersion : "—"}</td>
+        <td>${p.brandOutdated ? '<span class="tag bad">brand-outdated</span>' : ""}</td>
+      </tr>`).join("")}</table>` : `<p class="small">No pieces yet. Create one below or start a walkthrough.</p>`}`;
+
+  // Focused piece detail
+  const p = sel();
+  document.getElementById("detailPanel").innerHTML = !p ? `<h3>Focused piece</h3><p class="small">Nothing focused.</p>` : `
+    <h3>Focused: “${esc(p.title)}” <span class="tag">${p.status}</span> <span class="tag">v${p.version}</span> <span class="tag">${p.format}</span>
+      ${p.brandOutdated ? '<span class="tag bad">brand-outdated</span>' : ""}</h3>
+    <div class="cols">
+      <div>
+        <h3>Document (slide 1 layers)</h3>
+        <table><tr><th>Layer</th><th>Type</th><th>Color</th><th>Content</th></tr>
+        ${p.doc.slides[0].layers.map(l => `<tr><td>${l.id}</td><td>${l.type}</td>
+          <td>${l.color ? tokenSwatch(state.brandKit, l.color) : "—"}${l.color && /^#/.test(l.color) ? ' <span class="tag bad">off-kit</span>' : ""}</td>
+          <td>${l.type === "text" ? esc(l.text || "(empty)") : "—"}</td></tr>`).join("")}</table>
+        <h3>Captions</h3>
+        <table>${Object.entries(p.doc.captions).map(([n, c]) => `<tr><td>${n}</td><td>${c ? esc(c) : "—"}</td></tr>`).join("")}</table>
+      </div>
+      <div>
+        <h3>Version history</h3>
+        <table>${p.history.slice().reverse().map(h => `<tr><td>v${h.version}</td><td>${esc(h.summary)}</td></tr>`).join("")}</table>
+        <h3>Last checks ${p.lastChecks ? `<span class="small">(doc v${p.lastChecks.atVersion}, kit v${p.lastChecks.kitVersion})</span>` : ""}</h3>
+        ${p.lastChecks ? `
+          ${p.lastChecks.brand.errors.map(e => `<div class="small" style="color:#b42318">brand error: ${esc(e)}</div>`).join("")}
+          ${p.lastChecks.brand.warnings.map(w => `<div class="small" style="color:#92400e">brand warning: ${esc(w)}</div>`).join("")}
+          ${p.lastChecks.quality.map(q => `<div class="small">quality finding (advisory): ${esc(q)}</div>`).join("")}
+          ${!p.lastChecks.brand.errors.length && !p.lastChecks.brand.warnings.length && !p.lastChecks.quality.length ? '<div class="small">All clear.</div>' : ""}
+        ` : '<div class="small">Not run yet.</div>'}
+        ${p.exportBundle ? `<h3>Export bundle</h3><div class="small">${p.exportBundle.files.map(esc).join("<br>")}<br>rendered at doc v${p.exportBundle.renderedAtVersion}, kit v${p.exportBundle.kitVersion}</div>` : ""}
+        ${p.outcome ? `<h3>Outcome</h3><div class="small">${esc(p.outcome)}</div>` : ""}
+      </div>
+    </div>`;
+
+  // Free play
+  const v = p ? p.version : 0;
+  document.getElementById("freePanel").innerHTML = `
+    <h3>Anywhere</h3>
+    <button class="primary" onclick='dispatch({type:"CREATE_PIECE",title:"KeepAnalog launch teaser",format:"4:5",headline:"Your notes deserve paper"})'>Create piece from Creative Brief</button>
+    <button onclick='dispatch({type:"UPDATE_BRAND_KIT",tokens:{"brand.primary":"#8A4FFF"}})'>Change Brand Kit primary color</button>
+    ${p ? `
+    <h3>On the focused piece</h3>
+    <button onclick='dispatch({type:"START_DRAFTING",id:${p.id}})'>Start drafting</button>
+    <button onclick='dispatch({type:"APPLY_EDIT_BATCH",id:${p.id},baseVersion:${v},actor:"Operator",ops:[{op:"set_text",layer:${p.doc.slides[0].layers[0] ? p.doc.slides[0].layers[0].id : 0},value:"Fresh headline, v${v + 1}"},{op:"set_caption",network:"instagram",value:"New caption for IG"}]})'>Apply on-brand edit batch (base v${v})</button>
+    <button onclick='dispatch({type:"APPLY_EDIT_BATCH",id:${p.id},baseVersion:${v},actor:"AI Host",ops:[{op:"add_layer",layerType:"shape",color:"#FF2D95"}]})'>AI Host adds off-brand layer</button>
+    <button onclick='dispatch({type:"APPLY_EDIT_BATCH",id:${p.id},baseVersion:${Math.max(1, v - 1)},actor:"AI Host",ops:[{op:"set_caption",network:"x",value:"stale write"}]})'>AI Host sends stale batch (base v${Math.max(1, v - 1)})</button>
+    <button onclick='dispatch({type:"RESTORE_VERSION",id:${p.id},version:1})'>Restore version 1</button>
+    <button onclick='dispatch({type:"RUN_CHECKS",id:${p.id}})'>Run brand + quality checks</button>
+    <button onclick='dispatch({type:"SUBMIT_REVIEW",id:${p.id}})'>Submit for review</button>
+    <button onclick='dispatch({type:"REQUEST_CHANGES",id:${p.id}})'>Request changes</button>
+    <button onclick='dispatch({type:"APPROVE",id:${p.id}})'>Approve</button>
+    <button onclick='dispatch({type:"PLAN",id:${p.id},date:"2026-09-05"})'>Plan for Sep 5</button>
+    <button onclick='dispatch({type:"UNPLAN",id:${p.id}})'>Unplan</button>
+    <button onclick='dispatch({type:"REAPPROVE",id:${p.id}})'>Re-approve after kit change</button>
+    <button onclick='dispatch({type:"EXPORT",id:${p.id}})'>Export PNG bundle</button>
+    <button onclick='dispatch({type:"RECORD_OUTCOME",id:${p.id},note:"212 profile visits, 9 signups (manual)"})'>Record outcome</button>
+    <button onclick='dispatch({type:"REOPEN",id:${p.id}})'>Reopen to drafting</button>
+    <button onclick='dispatch({type:"SAVE_AS_TEMPLATE",id:${p.id}})'>Save as Creative Template</button>` : ""}`;
+
+  // Log
+  document.getElementById("log").innerHTML =
+    logEntries.slice(0, 60).map(e => `<div class="${e.kind}">${esc(e.text)}</div>`).join("") || '<div class="small">Nothing yet.</div>';
+
+  renderScenario();
+}
+
+/* -------- Guided walkthroughs -------- */
+const scenarios = [
+  {
+    name: "1 · Happy path",
+    blurb: "The full route: a Creative Brief becomes a backlog piece, gets drafted and captioned, passes checks, is reviewed, approved, planned on the calendar, exported as a PNG bundle, and finally measured. Watch the version counter and the status tag move.",
+    steps: () => [
+      ["Create piece from Creative Brief", { type: "CREATE_PIECE", title: "KeepAnalog launch teaser", format: "4:5", headline: "Your notes deserve paper" }],
+      ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
+      ["Operator edits headline + IG caption", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "Operator", ops: [
+        { op: "set_text", layer: sel().doc.slides[0].layers[0].id, value: "Ship your ideas on paper" },
+        { op: "set_caption", network: "instagram", value: "Analog thinking, digital reach." }] })],
+      ["Run brand + quality checks", () => ({ type: "RUN_CHECKS", id: selectedId })],
+      ["Submit for review", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
+      ["Approve (pins Brand Kit version)", () => ({ type: "APPROVE", id: selectedId })],
+      ["Plan for Sep 5", () => ({ type: "PLAN", id: selectedId, date: "2026-09-05" })],
+      ["Export PNG bundle", () => ({ type: "EXPORT", id: selectedId })],
+      ["Record manual outcome", () => ({ type: "RECORD_OUTCOME", id: selectedId, note: "212 profile visits, 9 signups (manual)" })]
+    ]
+  },
+  {
+    name: "2 · Stale AI-Host write",
+    blurb: "The Operator and the AI Host share one document. The Operator saves first, so the AI Host's batch carries a stale base version. The model must reject it with a version_conflict instead of silently overwriting the human save; a retry against the fresh version succeeds.",
+    steps: () => [
+      ["Create piece", { type: "CREATE_PIECE", title: "partnr feature post", format: "1:1", headline: "Split the work, not the friendship" }],
+      ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
+      ["Operator saves an edit (v1 → v2)", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "Operator", ops: [
+        { op: "set_text", layer: sel().doc.slides[0].layers[0].id, value: "Fair splits, zero awkwardness" }] })],
+      ["AI Host writes against stale v1 → rejected", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: 1, actor: "AI Host", ops: [
+        { op: "set_caption", network: "x", value: "This would clobber the human save" }] })],
+      ["AI Host retries against fresh version → applied", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "AI Host", ops: [
+        { op: "set_caption", network: "x", value: "Fair splits, zero awkwardness. Thread below." }] })]
+    ]
+  },
+  {
+    name: "3 · Brand errors gate approval",
+    blurb: "An off-kit raw color sneaks in. check_brand reports it as an error, and approval is blocked until it's fixed. Meanwhile a heuristic quality finding (crowded slide) stays advisory: the piece approves with it still open. Deterministic facts gate; heuristics advise.",
+    steps: () => [
+      ["Create piece", { type: "CREATE_PIECE", title: "VinylOS drop announcement", format: "9:16", headline: "Press play on wax" }],
+      ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
+      ["AI Host adds an off-brand pink layer", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "AI Host", ops: [
+        { op: "add_layer", layerType: "shape", color: "#FF2D95" },
+        { op: "add_layer", layerType: "shape", color: "brand.surface" },
+        { op: "add_layer", layerType: "shape", color: "brand.surface" },
+        { op: "add_layer", layerType: "shape", color: "brand.surface" }] })],
+      ["Run checks: 1 brand error + crowded-slide finding", () => ({ type: "RUN_CHECKS", id: selectedId })],
+      ["Submit for review", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
+      ["Try to approve → blocked by brand error", () => ({ type: "APPROVE", id: selectedId })],
+      ["Request changes (back to drafting)", () => ({ type: "REQUEST_CHANGES", id: selectedId })],
+      ["Fix: recolor the pink layer to a token", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "Operator", ops: [
+        { op: "set_layer_color", layer: sel().doc.slides[0].layers.find(l => l.color === "#FF2D95").id, value: "brand.primary" }] })],
+      ["Submit again", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
+      ["Approve → passes, quality finding stays advisory", () => ({ type: "APPROVE", id: selectedId })]
+    ]
+  },
+  {
+    name: "4 · Brand Kit change after approval",
+    blurb: "A piece is approved and planned, then the Brand Kit's primary color changes. Drafts repaint live, but the approved piece is flagged brand-outdated and export is blocked: approval means the Operator saw that exact rendering. Re-approval re-pins the kit and unblocks export.",
+    steps: () => [
+      ["Create piece", { type: "CREATE_PIECE", title: "KeepAnalog carousel", format: "4:5", headline: "Five reasons paper wins" }],
+      ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
+      ["Submit for review", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
+      ["Approve (pins kit v1)", () => ({ type: "APPROVE", id: selectedId })],
+      ["Plan for Sep 5", () => ({ type: "PLAN", id: selectedId, date: "2026-09-05" })],
+      ["Brand Kit primary changes → piece flagged", { type: "UPDATE_BRAND_KIT", tokens: { "brand.primary": "#8A4FFF" } }],
+      ["Try to export → blocked while brand-outdated", () => ({ type: "EXPORT", id: selectedId })],
+      ["Re-approve → re-pins to kit v2", () => ({ type: "REAPPROVE", id: selectedId })],
+      ["Export → succeeds", () => ({ type: "EXPORT", id: selectedId })]
+    ]
+  },
+  {
+    name: "5 · Illegal moves",
+    blurb: "Attempts the model must refuse: planning before approval, exporting from drafting, editing an approved piece without reopening it, and a batch with an unknown operation. Each rejection should leave the piece exactly as it was. Then: restore-creates-new-version and strip-and-save templates.",
+    steps: () => [
+      ["Create piece", { type: "CREATE_PIECE", title: "partnr story", format: "9:16", headline: "Who owes what, settled" }],
+      ["Try to plan while in backlog → refused", () => ({ type: "PLAN", id: selectedId, date: "2026-09-10" })],
+      ["Start drafting", () => ({ type: "START_DRAFTING", id: selectedId })],
+      ["Try to export while drafting → refused", () => ({ type: "EXPORT", id: selectedId })],
+      ["Batch with unknown op → whole batch rejected", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "AI Host", ops: [
+        { op: "set_caption", network: "linkedin", value: "fine op" }, { op: "explode_layer", layer: 1 }] })],
+      ["Real edit (v1 → v2)", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "Operator", ops: [
+        { op: "set_text", layer: sel().doc.slides[0].layers[0].id, value: "Settle up in one tap" }] })],
+      ["Submit + approve", () => ({ type: "SUBMIT_REVIEW", id: selectedId })],
+      ["Approve", () => ({ type: "APPROVE", id: selectedId })],
+      ["Try to edit approved piece → refused", () => ({ type: "APPLY_EDIT_BATCH", id: selectedId, baseVersion: sel().version, actor: "AI Host", ops: [
+        { op: "set_caption", network: "tiktok", value: "sneaky post-approval edit" }] })],
+      ["Reopen to drafting (clears approval)", () => ({ type: "REOPEN", id: selectedId })],
+      ["Restore v1 → becomes new v3", () => ({ type: "RESTORE_VERSION", id: selectedId, version: 1 })],
+      ["Save as Creative Template (stripped)", () => ({ type: "SAVE_AS_TEMPLATE", id: selectedId })]
+    ]
+  }
+];
+
+let activeScenario = 0;
+let scenarioStep = 0;
+
+function startScenario(i) {
+  activeScenario = i;
+  scenarioStep = 0;
+  state = CreativePieceMachine.initialState();
+  selectedId = null;
+  logEntries = [{ kind: "info", text: `— Reset to a fresh workspace for walkthrough “${scenarios[i].name}” —` }];
+  render();
+}
+
+function runStep(i) {
+  if (i !== scenarioStep) return;
+  const stepDef = scenarios[activeScenario].steps()[i];
+  const action = typeof stepDef[1] === "function" ? stepDef[1]() : stepDef[1];
+  dispatch(action, stepDef[0]);
+  scenarioStep = i + 1;
+  render();
+}
+
+function renderScenario() {
+  document.getElementById("tabs").innerHTML = scenarios.map((s, i) =>
+    `<button class="${i === activeScenario ? "active" : ""}" onclick="startScenario(${i})">${esc(s.name)}</button>`).join("");
+  const s = scenarios[activeScenario];
+  document.getElementById("scenario").innerHTML = `
+    <p>${esc(s.blurb)}</p>
+    <div class="steps">${s.steps().map((st, i) =>
+      `<button class="step ${i < scenarioStep ? "done" : i === scenarioStep ? "next" : ""}" onclick="runStep(${i})">${i + 1}. ${esc(st[0])}</button>`).join("")}
+    </div>
+    ${scenarioStep >= s.steps().length ? '<p class="small">Walkthrough complete. Free-play below, or pick another tab (each tab resets the workspace).</p>' : ""}`;
+}
+
+startScenario(0);
+</script>
+</main>
+</body>
+</html>
