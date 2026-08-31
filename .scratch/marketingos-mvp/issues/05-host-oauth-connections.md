@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 Secrets store and audit trail, 03 Operator passkey login.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A real hosted AI Host completes the OAuth flow and calls `onboard` authenticated
 - [ ] Grants and static tokens are stored via the custody module and revocable from one dashboard page
