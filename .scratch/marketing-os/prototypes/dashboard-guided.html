@@ -130,11 +130,48 @@ Call marketingos.get_method("draft_creative_piece").
 Draft 3 Instagram posts from Creative Brief brief-12
 against snapshot snap-keepanalog-r8, citing approved claims only.`;
 
+const CONNECT_PROMPT = `Add this MCP connector to your AI Host:
+https://marketingos.local/mcp
+Then call marketingos.onboard and tell me what you can see.`;
+
+/* First run is pure setup. It reads project context and registers
+   connections; it never applies a change to a Connected Project. */
+const setupSteps = [
+  {
+    headline: "Connect your first project.",
+    why: "Paste the KeepAnalog MCP address. MarketingOS runs the conformance checks and pins a first read-only snapshot.",
+    body: () => `
+      <div class="fields">
+        <div class="field"><label>Project MCP address</label><input value="https://keepanalog.app/mcp"><div class="help">A dedicated service token is minted for this project. Reads only; nothing is written back.</div></div>
+      </div>`,
+    cta: "Connect KeepAnalog",
+    done: "KeepAnalog connected, snapshot snap-keepanalog-r8 pinned"
+  },
+  {
+    headline: "Connect your AI Host.",
+    why: "One connector, authorized from the host's own settings. You can revoke it here at any time.",
+    body: () => `<div class="promptbox">${esc(CONNECT_PROMPT)}<button class="copy" onclick="copyText(this, CONNECT_PROMPT)">Copy</button></div>`,
+    cta: "It answered",
+    done: "AI Host connected and onboarded"
+  },
+  {
+    headline: "Create your first Account Slot.",
+    why: "The durable home for one social account. Warm-up starts tomorrow as small daily steps; nothing posts from here.",
+    body: () => `
+      <div class="detail"><span class="k">Platform</span><span class="v">Instagram</span></div>
+      <div class="detail"><span class="k">Handle</span><span class="v">@keepanalog.paper <span class="tag yellow">warming</span></span></div>
+      <div class="detail"><span class="k">Niche</span><span class="v">stationery, note-taking, analog productivity</span></div>
+      <div class="detail"><span class="k">Daily cap</span><span class="v">5 interactions, window 09:00 to 18:00</span></div>`,
+    cta: "Create slot",
+    done: "Account Slot created for @keepanalog.paper"
+  }
+];
+
 const steps = [
   {
     headline: "Send today's brief to your AI Host.",
     why: "Experiment EXP-3 needs three more pieces before its sample target. This prompt carries everything the host needs.",
-    body: () => `<div class="promptbox">${esc(PROMPT)}<button class="copy" onclick="copyPrompt(this)">Copy</button></div>`,
+    body: () => `<div class="promptbox">${esc(PROMPT)}<button class="copy" onclick="copyText(this, PROMPT)">Copy</button></div>`,
     cta: "I sent it",
     done: "Brief sent to the AI Host"
   },
@@ -147,17 +184,6 @@ const steps = [
       <div class="detail"><span class="k">Piece 16</span><span class="v">Notebook teardown, part one <span class="tag yellow">1 claim flagged</span></span></div>`,
     cta: "Reviewed all three",
     done: "Three drafts reviewed"
-  },
-  {
-    headline: "Approve one change to KeepAnalog.",
-    why: "The host prepared a project write. Read the exact diff; nothing applies until you approve this digest.",
-    body: () => `
-      <div class="detail"><span class="k">Digest</span><span class="v">chg-4f2a1c</span></div>
-      <div class="detail"><span class="k">Diff</span><span class="v">+ claim: "Recall improves 29% on paper" <span class="tag green">validated</span></span></div>
-      <div class="detail"><span class="k">Snapshot</span><span class="v">snap-keepanalog-r8, pinned 2 hours ago</span></div>`,
-    cta: "Approve digest",
-    alt: "Reject",
-    done: "Project write chg-4f2a1c approved"
   },
   {
     headline: "Do today's warm-up for @keepanalog.paper.",
@@ -182,33 +208,51 @@ const steps = [
   }
 ];
 
+let mode = "setup"; // "setup" (first run) then "daily"
 let current = 0;
 const completed = [];
 
+const flow = () => (mode === "setup" ? setupSteps : steps);
+const metaLine = () => (mode === "setup" ? "First run, setup" : "Today, Thursday September 4");
+
+function doneScreen() {
+  if (mode === "setup") return {
+    headline: "Setup is done.",
+    why: "Three connections, nothing written to KeepAnalog. The daily loop starts whenever you are ready.",
+    action: `<button class="primary" onclick="startDaily()">Start today's loop</button>
+             <span class="hint">Setup never applies changes to a Connected Project.</span>`
+  };
+  return {
+    headline: "That is everything for today.",
+    why: "All steps recorded. EXP-3 is one observation closer to its stop condition.",
+    action: `<button class="primary" onclick="reset()">Start over (prototype)</button>
+             <span class="hint">Tomorrow starts with the 7-day measure for the Sep 5 post.</span>`
+  };
+}
+
 function render() {
   const main = document.getElementById("main");
-  if (current >= steps.length) {
+  const f = flow();
+  if (current >= f.length) {
+    const d = doneScreen();
     main.innerHTML = `
       <div class="step">
-        <p class="meta">Today, Thursday September 4</p>
-        <div class="progress"><span class="count">done</span><span class="segs">${steps.map(() => '<i class="done"></i>').join("")}</span></div>
-        <h1>That is everything for today.</h1>
-        <p class="why">Five steps, all recorded. EXP-3 is one observation closer to its stop condition.</p>
+        <p class="meta">${metaLine()}</p>
+        <div class="progress"><span class="count">done</span><span class="segs">${f.map(() => '<i class="done"></i>').join("")}</span></div>
+        <h1>${d.headline}</h1>
+        <p class="why">${d.why}</p>
         <div>${completed.map((t, i) => `<div class="doneline"><span class="n">${i + 1}</span><span class="t">${esc(t)}</span><span class="tag green">done</span></div>`).join("")}</div>
-        <div class="actions">
-          <button class="primary" onclick="reset()">Start over (prototype)</button>
-          <span class="hint">Tomorrow starts with the 7-day measure for the Sep 5 post.</span>
-        </div>
+        <div class="actions">${d.action}</div>
       </div>`;
     return;
   }
-  const s = steps[current];
+  const s = f[current];
   main.innerHTML = `
     <div class="step">
-      <p class="meta">Today, Thursday September 4</p>
+      <p class="meta">${metaLine()}</p>
       <div class="progress">
-        <span class="count">${current + 1} of ${steps.length}</span>
-        <span class="segs">${steps.map((_, i) => `<i class="${i < current ? "done" : ""}"></i>`).join("")}</span>
+        <span class="count">${current + 1} of ${f.length}</span>
+        <span class="segs">${f.map((_, i) => `<i class="${i < current ? "done" : ""}"></i>`).join("")}</span>
       </div>
       <h1>${esc(s.headline)}</h1>
       <p class="why">${esc(s.why)}</p>
@@ -222,10 +266,11 @@ function render() {
     </div>`;
 }
 
-function advance() { completed.push(steps[current].done); current += 1; render(); }
-function reset() { current = 0; completed.length = 0; render(); }
-function copyPrompt(btn) {
-  if (navigator.clipboard) navigator.clipboard.writeText(PROMPT);
+function advance() { completed.push(flow()[current].done); current += 1; render(); }
+function startDaily() { mode = "daily"; current = 0; completed.length = 0; render(); }
+function reset() { mode = "setup"; current = 0; completed.length = 0; render(); }
+function copyText(btn, text) {
+  if (navigator.clipboard) navigator.clipboard.writeText(text);
   btn.textContent = "Copied";
   btn.classList.add("did");
   setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("did"); }, 1400);
@@ -233,7 +278,7 @@ function copyPrompt(btn) {
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   if (/INPUT|TEXTAREA|BUTTON/.test(document.activeElement.tagName)) return;
-  if (current < steps.length) advance();
+  if (current < flow().length) advance();
 });
 render();
 </script>
