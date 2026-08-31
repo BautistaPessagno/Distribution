@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 Brand Kit and deterministic checks.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Approval is refused while a brand error or [NEED] token exists, naming each blocker
 - [ ] Approval pins the kit version; kit change flags approved work brand-outdated
