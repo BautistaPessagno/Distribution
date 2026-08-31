@@ -80,6 +80,10 @@ _Avoid_: Prompt, request
 A structured, editable marketing composition with versioned content, layout, channel variants, and planning state.
 _Avoid_: Post, design, asset
 
+**Marketing Asset**:
+An image or other binary file a Creative Piece composes, recorded with its origin, the prompt and source files it came from, and its rights notes. MarketingOS stores and attributes these; it never generates them.
+_Avoid_: Image, file, upload
+
 **Creative Template**:
 A reusable structure and visual treatment for future Creative Pieces, without campaign-specific claims or results.
 _Avoid_: Piece, duplicate

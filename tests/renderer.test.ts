@@ -19,6 +19,7 @@ process.env.SECRETS_MASTER_KEY = randomBytes(32).toString("base64");
 process.env.EXPORTS_PATH = path.join(tmpDir, "exports");
 
 import express from "express";
+import { registerAsset } from "../server/assets";
 import { selectProject } from "../server/gateway";
 import { applyEditBatch } from "../server/piece-edits";
 import {
@@ -69,6 +70,12 @@ const port = (server.address() as AddressInfo).port;
 
 const SESSION = "renderer-session";
 
+// Image layers reference registered assets by their stable id (ticket 16),
+// so the fixture registers one rather than inventing a reference that
+// resolves to nothing — an unresolvable one is a brand error and would
+// block the approval this piece needs to reach planned.
+let heroRef = "";
+
 function doc(): PieceDoc {
   return {
     format: "1:1",
@@ -82,7 +89,7 @@ function doc(): PieceDoc {
       },
       {
         layers: [
-          { type: "image", ref: "asset://hero", alt: "A film camera" },
+          { type: "image", ref: heroRef, alt: "A film camera" },
           { type: "text", text: "Second slide" },
         ],
       },
@@ -116,6 +123,17 @@ test.before(async () => {
   const a = await registerProject("KeepAnalog", `http://127.0.0.1:${port}/keepanalog`, "test");
   assert.equal(a.project.status, "healthy");
   assert.equal((await selectProject(SESSION, "KeepAnalog")).ok, true);
+
+  const hero = Buffer.alloc(2048, 0x42);
+  Buffer.from("89504e470d0a1a0a", "hex").copy(hero, 0);
+  const registered = registerAsset(SESSION, {
+    origin: "ai_host",
+    prompt: "A film camera on a desk",
+    rights: "generated for this project",
+    bytesBase64: hero.toString("base64"),
+  });
+  assert.equal(registered.ok, true, JSON.stringify(registered.response));
+  heroRef = (registered.response.asset as { ref: string }).ref;
 });
 
 test.after(async () => {
@@ -252,4 +270,52 @@ test("render_preview refuses unknown and cross-project pieces", () => {
   const missing = renderPreview(SESSION, { id: 424242 });
   assert.equal(missing.ok, false);
   assert.equal(missing.response.error, "unknown_piece");
+});
+
+test("an exported PNG really contains the asset, served into Chromium from the database", async () => {
+  // The markup points image layers at /api/assets/<id>/bytes and no server
+  // is running for an export, so the exporter fulfils that request itself.
+  // If it did not, the image would simply fail to load and the screenshot
+  // would still succeed — so prove it by comparing against the same layout
+  // with a reference that resolves to nothing.
+  function withImage(ref: string): PieceDoc {
+    return {
+      format: "1:1",
+      slides: [{ layers: [{ type: "image", ref, frame: { x: 0, y: 0, w: 1, h: 1 } }] }],
+      captions: { instagram: "", x: "", linkedin: "", tiktok: "" },
+    };
+  }
+
+  async function exportedPng(title: string, ref: string): Promise<Buffer> {
+    const created = createPiece(SESSION, { title, doc: withImage(ref) });
+    assert.equal(created.ok, true);
+    const id = (created.response.piece as { id: number }).id;
+    assert.equal(startDrafting(SESSION, { id }).ok, true);
+    assert.equal(submitForReview(SESSION, { id }).ok, true);
+    const record = getPieceById(id);
+    assert.ok(record);
+    assert.equal(approvePiece(record, "operator").ok, true);
+    const approved = getPieceById(id);
+    assert.ok(approved);
+    assert.equal(planPiece(approved, "2026-09-05", "operator").ok, true);
+
+    const exported = await exportPiece(SESSION, { id });
+    assert.equal(exported.ok, true, JSON.stringify(exported.response));
+    const bundle = exported.response.bundle as { name: string; manifest: ExportManifest };
+    const png = bundle.manifest.files.find((f) => f.kind === "png");
+    assert.ok(png);
+    return fs.readFileSync(
+      path.join(process.env.EXPORTS_PATH as string, bundle.name, png.name)
+    );
+  }
+
+  const withAsset = await exportedPng("exports the real asset", heroRef);
+  const withoutAsset = await exportedPng("exports a placeholder", "asset://424242");
+
+  assert.notDeepEqual(
+    withAsset,
+    withoutAsset,
+    "the resolved asset must change what the screenshot shows"
+  );
+  assert.equal(withAsset.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
 });

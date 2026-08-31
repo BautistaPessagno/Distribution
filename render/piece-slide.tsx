@@ -183,7 +183,8 @@ function layerView(
   format: string,
   width: number,
   height: number,
-  tokens: BrandTokens
+  tokens: BrandTokens,
+  resolveAsset?: AssetResolver
 ): ReactElement {
   const placed: CSSProperties = layer.frame
     ? frameStyle(layer.frame, width, height)
@@ -208,7 +209,10 @@ function layerView(
           {layer.text ?? ""}
         </div>
       );
-    case "image":
+    case "image": {
+      // A registered asset draws as itself; anything else draws as the
+      // placeholder that says which reference did not resolve.
+      const src = layer.ref && resolveAsset ? resolveAsset(layer.ref) : null;
       return (
         <div
           key={index}
@@ -216,8 +220,10 @@ function layerView(
           style={{
             ...placed,
             minHeight: layer.frame ? undefined : intrinsicLayerHeight(layer, format),
-            background: "repeating-linear-gradient(45deg, #d8d2c6, #d8d2c6 24px, #e6e0d4 24px, #e6e0d4 48px)",
-            border: `2px dashed ${resolveColor("brand.ink", tokens)}`,
+            background: src
+              ? undefined
+              : "repeating-linear-gradient(45deg, #d8d2c6, #d8d2c6 24px, #e6e0d4 24px, #e6e0d4 48px)",
+            border: src ? undefined : `2px dashed ${resolveColor("brand.ink", tokens)}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -227,9 +233,18 @@ function layerView(
             overflow: "hidden",
           }}
         >
-          {`image: ${layer.ref ?? ""}${layer.alt ? ` — ${layer.alt}` : ""}`}
+          {src ? (
+            <img
+              src={src}
+              alt={layer.alt ?? ""}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          ) : (
+            `image: ${layer.ref ?? ""}${layer.alt ? ` — ${layer.alt}` : ""}`
+          )}
         </div>
       );
+    }
     case "shape":
       return (
         <div
@@ -276,14 +291,29 @@ function layerView(
   }
 }
 
+/**
+ * Turns an image layer's `ref` into something an <img> can show — a data URI
+ * for a registered asset. Returning null is normal and not an error: the
+ * layer draws its placeholder, which is what an unresolved reference should
+ * look like.
+ */
+export type AssetResolver = (ref: string) => string | null;
+
 export interface SlideViewProps {
   slide: RenderSlide;
   format: string;
   /** Brand Kit token table; omitted means the default kit. */
   tokens?: BrandTokens;
+  /** Resolves image refs to displayable sources; omitted means placeholders. */
+  resolveAsset?: AssetResolver;
 }
 
-export function SlideView({ slide, format, tokens }: SlideViewProps): ReactElement {
+export function SlideView({
+  slide,
+  format,
+  tokens,
+  resolveAsset,
+}: SlideViewProps): ReactElement {
   const kit = tokens ?? DEFAULT_BRAND_TOKENS;
   const { width, height } = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
   return (
@@ -303,7 +333,9 @@ export function SlideView({ slide, format, tokens }: SlideViewProps): ReactEleme
         overflow: "hidden",
       }}
     >
-      {slide.layers.map((layer, index) => layerView(layer, index, format, width, height, kit))}
+      {slide.layers.map((layer, index) =>
+        layerView(layer, index, format, width, height, kit, resolveAsset)
+      )}
     </div>
   );
 }

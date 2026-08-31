@@ -28,6 +28,7 @@ import {
   startDrafting,
   submitForReview,
 } from "./piece-lifecycle";
+import { listAssets, MAX_ASSET_BYTES, registerAsset } from "./assets";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { instantiateTemplate, listTemplates, saveAsTemplate } from "./templates";
 import { exportPiece, renderPreview } from "./renderer";
@@ -182,6 +183,33 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number(), outcome: z.string() },
     },
     async ({ id, outcome }) => lintedJson(recordPieceOutcome(sessionKey, { id, outcome }).response)
+  );
+  server.registerTool(
+    "marketingos.register_asset",
+    {
+      description:
+        `Return a generated image to MarketingOS. Inline base64 up to ${Math.round(
+          MAX_ASSET_BYTES / 1024
+        )}KB, with a required origin (ai_host|operator_upload|project_import); a generated asset must carry its prompt and source-asset lineage, and rights notes are recorded (unreviewed if none come). Missing metadata fails with rights_missing. If this host cannot send binary payloads, or the file is over the cap, the named piece drops to 'prompt prepared' and the Operator uploads it in the dashboard. MarketingOS records the handoff; it never claims it generated the image.`,
+      inputSchema: {
+        origin: z.string(),
+        prompt: z.string().optional(),
+        sourceAssets: z.array(z.string()).optional(),
+        rights: z.string().optional(),
+        bytesBase64: z.string().optional(),
+        pieceId: z.number().optional(),
+      },
+    },
+    async (input) => lintedJson(registerAsset(sessionKey, input).response)
+  );
+  server.registerTool(
+    "marketingos.list_assets",
+    {
+      description:
+        "List the registered assets of the selected Connected Project with their origin, prompt lineage, and rights notes. An image layer references one by its stable asset:// id.",
+      inputSchema: {},
+    },
+    async () => lintedJson(listAssets(sessionKey).response)
   );
   server.registerTool(
     "marketingos.save_as_template",

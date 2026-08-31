@@ -112,6 +112,13 @@ export interface PieceRecord {
   plannedDate: string | null;
   /** What the Operator observed once the piece had run. Set by record_outcome. */
   outcome: string | null;
+  /**
+   * Where the image handoff stands: null, "prompt_prepared" while the
+   * Operator still owes a manual upload, or "asset_attached:<ref>".
+   */
+  imageState: string | null;
+  /** The prompt a host prepared, carried into the manual upload's lineage. */
+  imagePrompt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -128,6 +135,8 @@ interface PieceRow {
   brand_outdated: number;
   planned_date: string | null;
   outcome: string | null;
+  image_state: string | null;
+  image_prompt: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -145,6 +154,8 @@ function rowToRecord(row: PieceRow): PieceRecord {
     brandOutdated: row.brand_outdated === 1,
     plannedDate: row.planned_date,
     outcome: row.outcome,
+    imageState: row.image_state,
+    imagePrompt: row.image_prompt,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -234,6 +245,7 @@ function pieceSummary(piece: PieceRecord): Record<string, unknown> {
     brandOutdated: piece.brandOutdated,
     plannedDate: piece.plannedDate,
     outcome: piece.outcome,
+    imageState: piece.imageState,
     createdAt: piece.createdAt,
   };
 }

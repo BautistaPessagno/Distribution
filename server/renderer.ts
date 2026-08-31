@@ -22,20 +22,38 @@ import { chromium, type Browser } from "playwright";
 import { z } from "zod";
 import { audit } from "./audit";
 import { getDb } from "./db";
+import {
+  assetBytes,
+  assetBytesPath,
+  assetIdFromBytesPath,
+  getAssetById,
+  resolveAssetRef,
+} from "./assets";
 import { currentKit, kitAtVersion, type BrandKit } from "./brand-kit";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
 import { exportRefusal, markExported } from "./piece-lifecycle";
 import { pieceDocSchema, type PieceDoc, type PieceRecord } from "./pieces";
-import { FORMAT_DIMENSIONS, SlideView, type BrandTokens } from "../render/piece-slide";
+import {
+  FORMAT_DIMENSIONS,
+  SlideView,
+  type AssetResolver,
+  type BrandTokens,
+} from "../render/piece-slide";
 
 export function renderSlideMarkup(
   doc: PieceDoc,
   slideIndex: number,
-  tokens?: BrandTokens
+  tokens?: BrandTokens,
+  resolveAsset?: AssetResolver
 ): string {
   return renderToStaticMarkup(
-    createElement(SlideView, { slide: doc.slides[slideIndex], format: doc.format, tokens })
+    createElement(SlideView, {
+      slide: doc.slides[slideIndex],
+      format: doc.format,
+      tokens,
+      resolveAsset,
+    })
   );
 }
 
@@ -43,14 +61,35 @@ export function renderSlideMarkup(
 export function renderSlideHtml(
   doc: PieceDoc,
   slideIndex: number,
-  tokens?: BrandTokens
+  tokens?: BrandTokens,
+  resolveAsset?: AssetResolver
 ): string {
   return [
     "<!DOCTYPE html>",
     '<html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;}</style></head><body>',
-    renderSlideMarkup(doc, slideIndex, tokens),
+    renderSlideMarkup(doc, slideIndex, tokens, resolveAsset),
     "</body></html>",
   ].join("");
+}
+
+/**
+ * Registered assets render as themselves. The markup carries the asset's
+ * URL, not its bytes: the dashboard fetches it over the authenticated
+ * route, and the export fulfils it from the database inside Chromium (see
+ * `renderPng`). So the preview and the export screenshot are byte-identical
+ * HTML — ticket 11's invariant holds with real pixels in it — while an MCP
+ * response stays a few hundred bytes per image instead of a few megabytes.
+ */
+export function assetResolverFor(projectId: number): AssetResolver {
+  const cache = new Map<string, string | null>();
+  return (ref) => {
+    const hit = cache.get(ref);
+    if (hit !== undefined) return hit;
+    const asset = resolveAssetRef(ref, projectId);
+    const src = asset ? assetBytesPath(asset.id) : null;
+    cache.set(ref, src);
+    return src;
+  };
 }
 
 /**
@@ -115,6 +154,7 @@ export function renderPreview(sessionKey: string, input: unknown): GatewayResult
   // Tokens are resolved now, not stored: a kit change repaints the piece
   // without the document changing at all.
   const kit = currentKit(piece.projectId);
+  const resolveAsset = assetResolverFor(piece.projectId);
 
   return {
     ok: true,
@@ -126,7 +166,9 @@ export function renderPreview(sessionKey: string, input: unknown): GatewayResult
         kitVersion: kit.version,
         format: doc.format,
         dimensions: FORMAT_DIMENSIONS[doc.format],
-        slides: doc.slides.map((_slide, index) => renderSlideHtml(doc, index, kit.tokens)),
+        slides: doc.slides.map((_slide, index) =>
+          renderSlideHtml(doc, index, kit.tokens, resolveAsset)
+        ),
       },
     },
   };
@@ -164,13 +206,35 @@ export interface ExportManifest {
 async function renderPng(
   doc: PieceDoc,
   slideIndex: number,
-  tokens: BrandTokens
+  tokens: BrandTokens,
+  resolveAsset: AssetResolver
 ): Promise<Buffer> {
   const { width, height } = FORMAT_DIMENSIONS[doc.format];
   const browser = await getBrowser();
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
   try {
-    await page.setContent(renderSlideHtml(doc, slideIndex, tokens), { waitUntil: "load" });
+    // The markup points image layers at the asset route. No server is
+    // running for this render, so the bytes are served straight out of the
+    // database into the page. Nothing else is allowed out: an export must
+    // not depend on, or reach, the network.
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      const id = assetIdFromBytesPath(url.pathname);
+      if (id === null) {
+        await route.abort();
+        return;
+      }
+      const asset = getAssetById(id);
+      const bytes = asset ? assetBytes(id) : null;
+      if (!asset || !bytes) {
+        await route.abort();
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: asset.mediaType, body: bytes });
+    });
+    await page.setContent(renderSlideHtml(doc, slideIndex, tokens, resolveAsset), {
+      waitUntil: "load",
+    });
     return await page.screenshot({ type: "png", clip: { x: 0, y: 0, width, height } });
   } finally {
     await page.close();
@@ -209,6 +273,7 @@ export async function exportPieceRecord(
 
   const doc = docAtVersion(piece.id, piece.docVersion) ?? piece.doc;
   const kit = exportKit(piece);
+  const resolveAsset = assetResolverFor(piece.projectId);
   const bundleName = `piece-${piece.id}-v${piece.docVersion}`;
   const bundleDir = path.join(exportsRoot(), bundleName);
   fs.mkdirSync(bundleDir, { recursive: true });
@@ -217,13 +282,13 @@ export async function exportPieceRecord(
   const files: ExportManifest["files"] = [];
   for (let index = 0; index < doc.slides.length; index += 1) {
     const name = `slide-${String(index + 1).padStart(2, "0")}-${formatSlug}.png`;
-    const png = await renderPng(doc, index, kit.tokens);
+    const png = await renderPng(doc, index, kit.tokens, resolveAsset);
     fs.writeFileSync(path.join(bundleDir, name), png);
     files.push({
       name,
       kind: "png",
       slide: index + 1,
-      sourceHtmlSha256: sha256(renderSlideHtml(doc, index, kit.tokens)),
+      sourceHtmlSha256: sha256(renderSlideHtml(doc, index, kit.tokens, resolveAsset)),
     });
   }
 
