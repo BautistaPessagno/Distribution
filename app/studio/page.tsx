@@ -32,6 +32,13 @@ interface Piece {
   createdAt: string;
 }
 
+interface PieceVersion {
+  version: number;
+  actor: string;
+  summary: string;
+  createdAt: string;
+}
+
 function layerLabel(layer: PieceLayer): string {
   switch (layer.type) {
     case "text":
@@ -49,6 +56,25 @@ export default function StudioPage() {
   const [pieces, setPieces] = useState<Piece[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [versions, setVersions] = useState<PieceVersion[] | null>(null);
+
+  const toggleOpen = useCallback(async (id: number, current: number | null) => {
+    if (current === id) {
+      setOpenId(null);
+      setVersions(null);
+      return;
+    }
+    setOpenId(id);
+    setVersions(null);
+    try {
+      const res = await fetch(`/api/pieces/${id}/versions`);
+      if (!res.ok) throw new Error((await res.json()).error);
+      const data = (await res.json()) as { versions: PieceVersion[] };
+      setVersions(data.versions);
+    } catch {
+      setVersions([]);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -126,13 +152,27 @@ export default function StudioPage() {
                           ))}
                         </ul>
                       </div>
+                      <div className="body-text">
+                        <strong>Version history</strong>
+                        {versions === null && <p>Loading history…</p>}
+                        {versions !== null && (
+                          <ul>
+                            {versions.map((v) => (
+                              <li key={v.version}>
+                                v{v.version} · {v.actor} · {v.summary} ·{" "}
+                                {new Date(v.createdAt).toLocaleString()}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
                 <div>
                   <button
                     className="action-quiet"
-                    onClick={() => setOpenId(openId === p.id ? null : p.id)}
+                    onClick={() => void toggleOpen(p.id, openId)}
                   >
                     {openId === p.id ? "Hide document" : "View document"}
                   </button>

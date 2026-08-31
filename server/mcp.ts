@@ -10,6 +10,13 @@ import {
   sessionContext,
 } from "./gateway";
 import { getMethod } from "./methods";
+import {
+  applyEditBatchInputSchema,
+  applyEditBatch,
+  listVersions,
+  MAX_BATCH_OPS,
+  restoreVersion,
+} from "./piece-edits";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { ONBOARD_GUIDE } from "./onboard";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
@@ -90,6 +97,33 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: {},
     },
     async () => lintedJson(listPieces(sessionKey).response)
+  );
+  server.registerTool(
+    "marketingos.apply_edit_batch",
+    {
+      description:
+        `Apply an atomic batch of 1-${MAX_BATCH_OPS} typed edit operations (set_text, set_fill, add_layer, remove_layer, set_caption) to a Creative Piece, bound to the baseVersion the batch was computed against. A stale base returns version_conflict changing nothing; structural errors reject the whole batch; invalid cosmetic values fall back with a warning. Each applied batch bumps the version.`,
+      inputSchema: applyEditBatchInputSchema.shape,
+    },
+    async (input) => lintedJson(applyEditBatch(sessionKey, input).response)
+  );
+  server.registerTool(
+    "marketingos.list_versions",
+    {
+      description:
+        "Read the append-only version history of a Creative Piece: version, actor, summary, and timestamp for every saved version.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(listVersions(sessionKey, id).response)
+  );
+  server.registerTool(
+    "marketingos.restore_version",
+    {
+      description:
+        "Restore an old version of a Creative Piece's document as a new version. History stays append-only; nothing is rewritten.",
+      inputSchema: { id: z.number(), version: z.number() },
+    },
+    async ({ id, version }) => lintedJson(restoreVersion(sessionKey, { id, version }).response)
   );
   server.registerTool(
     "project.get_snapshot",

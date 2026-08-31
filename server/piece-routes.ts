@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type Router } from "express";
 import { validateSession } from "./auth";
 import { sessionTokenFrom } from "./auth-routes";
+import { listVersionsForPiece } from "./piece-edits";
 import { getPieceById, listAllPieces } from "./pieces";
 import { listProjects } from "./projects";
 
@@ -29,6 +30,20 @@ export function pieceRouter(): Router {
         projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
       })),
     });
+  });
+
+  router.get("/:id/versions", (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid piece id" });
+      return;
+    }
+    const piece = getPieceById(id);
+    if (!piece) {
+      res.status(404).json({ error: `No piece #${id}` });
+      return;
+    }
+    res.json({ versions: listVersionsForPiece(id) });
   });
 
   router.get("/:id", (req, res) => {
