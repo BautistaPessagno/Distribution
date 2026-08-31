@@ -5,31 +5,6 @@ import { useEffect, useState } from "react";
 
 type Phase = "loading" | "first-run" | "sign-in" | "recovery-shown";
 
-const box: React.CSSProperties = {
-  maxWidth: "26rem",
-  margin: "0 auto",
-  padding: "6rem 1.5rem",
-};
-
-const buttonStyle: React.CSSProperties = {
-  fontFamily: "inherit",
-  fontSize: "1rem",
-  padding: "0.6rem 1.2rem",
-  background: "#1a1a18",
-  color: "#faf9f7",
-  border: "none",
-  cursor: "pointer",
-};
-
-const inputStyle: React.CSSProperties = {
-  fontFamily: "system-ui, sans-serif",
-  fontSize: "0.9rem",
-  padding: "0.5rem",
-  border: "1px solid #d8d5cf",
-  width: "100%",
-  boxSizing: "border-box",
-};
-
 export default function LoginPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -104,21 +79,19 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={box}>
-      <h1 style={{ fontWeight: 400, fontSize: "1.75rem", marginBottom: "0.5rem" }}>
-        MarketingOS
-      </h1>
-      <hr style={{ border: "none", borderTop: "1px solid #d8d5cf", margin: "1.5rem 0" }} />
+    <main className="login-box">
+      <h1 className="headline">MarketingOS</h1>
+      <hr className="hairline" />
 
       {phase === "loading" && <p>Loading…</p>}
 
       {phase === "first-run" && (
         <>
-          <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.9rem", color: "#5a574f" }}>
+          <p className="body-text">
             No Operator account exists yet. Create the sole Operator account with a
             passkey. You will be shown a recovery code exactly once.
           </p>
-          <button style={buttonStyle} onClick={register}>
+          <button className="action-primary" onClick={register}>
             Create Operator account
           </button>
         </>
@@ -126,23 +99,12 @@ export default function LoginPage() {
 
       {phase === "recovery-shown" && recoveryCode && (
         <>
-          <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.9rem", color: "#5a574f" }}>
+          <p className="body-text">
             Your recovery code. Store it somewhere safe — it is shown only this once and
             is the only way back in if you lose your passkey.
           </p>
-          <p
-            style={{
-              fontFamily: "ui-monospace, monospace",
-              fontSize: "1.1rem",
-              padding: "1rem",
-              background: "#f0eeea",
-              border: "1px solid #d8d5cf",
-              userSelect: "all",
-            }}
-          >
-            {recoveryCode}
-          </p>
-          <button style={buttonStyle} onClick={() => (window.location.href = "/")}>
+          <p className="recovery-code">{recoveryCode}</p>
+          <button className="action-primary" onClick={() => (window.location.href = "/")}>
             I saved it — continue
           </button>
         </>
@@ -150,23 +112,19 @@ export default function LoginPage() {
 
       {phase === "sign-in" && (
         <>
-          <button style={buttonStyle} onClick={signIn}>
+          <button className="action-primary" onClick={signIn}>
             Sign in with passkey
           </button>
-          <form onSubmit={recover} style={{ marginTop: "2.5rem" }}>
-            <p
-              style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", color: "#5a574f" }}
-            >
-              Lost your passkey? Enter your recovery code.
-            </p>
+          <form onSubmit={recover} style={{ marginTop: "var(--space-4)" }}>
+            <p className="body-text">Lost your passkey? Enter your recovery code.</p>
             <input
-              style={inputStyle}
+              className="field"
               value={recoveryInput}
               onChange={(e) => setRecoveryInput(e.target.value)}
               placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
               aria-label="Recovery code"
             />
-            <button style={{ ...buttonStyle, marginTop: "0.75rem" }} type="submit">
+            <button className="action-primary" style={{ marginTop: "var(--space-1)" }} type="submit">
               Sign in with recovery code
             </button>
           </form>
@@ -174,9 +132,7 @@ export default function LoginPage() {
       )}
 
       {error && (
-        <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", color: "#a03d2e" }}>
-          {error}
-        </p>
+        <p className="error-text">{error}</p>
       )}
     </main>
   );

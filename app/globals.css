@@ -1,0 +1,294 @@
+/* MarketingOS design tokens — the single source of truth for color,
+   type, spacing, and motion. Components must consume these variables
+   and the classes below; no ad-hoc colors in components. */
+
+:root {
+  /* Canvas & surfaces (warm monochrome) */
+  --canvas: #faf9f7;
+  --surface: #ffffff;
+  --surface-muted: #f4f2ee;
+
+  /* Ink */
+  --ink: #1a1a18;
+  --ink-secondary: #5a574f;
+  --ink-faint: #8a867c;
+
+  /* Hairlines */
+  --hairline: #e6e3dd;
+
+  /* Primary action */
+  --action: #1a1a18;
+  --action-hover: #33312d;
+  --action-ink: #faf9f7;
+
+  /* Muted pastel status tags */
+  --tag-neutral-bg: #f0eeea;
+  --tag-neutral-ink: #5a574f;
+  --tag-info-bg: #e1f0fa;
+  --tag-info-ink: #1f6c9f;
+  --tag-good-bg: #edf3ec;
+  --tag-good-ink: #346538;
+  --tag-warn-bg: #fbf3db;
+  --tag-warn-ink: #956400;
+  --tag-bad-bg: #fdebec;
+  --tag-bad-ink: #9f2f2d;
+
+  /* Type */
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", monospace;
+
+  /* Serif step headline scale */
+  --step-2: 1.75rem;
+  --step-1: 1.25rem;
+  --step-0: 1rem;
+
+  /* Spacing */
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2.5rem;
+  --space-5: 4rem;
+
+  --radius: 6px;
+
+  /* Motion */
+  --enter-duration: 500ms;
+  --enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-serif);
+  background: var(--canvas);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+/* --- Typography --- */
+
+.headline {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--step-2);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 var(--space-1);
+}
+
+.headline-sub {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--step-1);
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--space-1);
+}
+
+.body-text {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--ink-secondary);
+  margin: 0 0 var(--space-2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.hairline {
+  border: none;
+  border-top: 1px solid var(--hairline);
+  margin: var(--space-3) 0;
+}
+
+/* --- Actions --- */
+
+.action-primary {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  padding: 0.55rem 1.1rem;
+  background: var(--action);
+  color: var(--action-ink);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 200ms;
+}
+
+.action-primary:hover {
+  background: var(--action-hover);
+}
+
+.action-quiet {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  color: var(--ink-secondary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+/* --- Tags --- */
+
+.tag {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  background: var(--tag-neutral-bg);
+  color: var(--tag-neutral-ink);
+}
+
+.tag-info { background: var(--tag-info-bg); color: var(--tag-info-ink); }
+.tag-good { background: var(--tag-good-bg); color: var(--tag-good-ink); }
+.tag-warn { background: var(--tag-warn-bg); color: var(--tag-warn-ink); }
+.tag-bad { background: var(--tag-bad-bg); color: var(--tag-bad-ink); }
+
+/* --- Inputs --- */
+
+.field {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  padding: 0.5rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+}
+
+/* --- Shell --- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 15rem 1fr;
+  min-height: 100vh;
+}
+
+.shell-nav {
+  border-right: 1px solid var(--hairline);
+  padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.shell-brand {
+  font-family: var(--font-serif);
+  font-size: var(--step-1);
+  letter-spacing: -0.01em;
+}
+
+.project-switcher {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  cursor: default;
+}
+
+.shell-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.shell-nav-link {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--ink-secondary);
+  text-decoration: none;
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius);
+}
+
+.shell-nav-link:hover {
+  background: var(--surface-muted);
+}
+
+.shell-nav-link[aria-current="page"] {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+
+.shell-nav-foot {
+  margin-top: auto;
+}
+
+.shell-main {
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  max-width: 46rem;
+}
+
+/* --- Empty states --- */
+
+.empty-state {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-4);
+  animation: enter var(--enter-duration) var(--enter-ease);
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Reduced-motion fallback: content appears without movement. */
+@media (prefers-reduced-motion: reduce) {
+  .empty-state {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* --- Login --- */
+
+.login-box {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.recovery-code {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  padding: var(--space-2);
+  background: var(--surface-muted);
+  border: 1px solid var(--hairline);
+  user-select: all;
+}
+
+.error-text {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--tag-bad-ink);
+}
