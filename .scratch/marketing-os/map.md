@@ -41,6 +41,7 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Define the Account Operations workflow](issues/12-define-account-operations-workflow.md): durable slots with replaceable archived instances, checklist-based readiness, full proof-and-self-review Work Order cycles, blocking daily caps with a per-slot kill switch, and replacement that re-earns readiness.
 - [Define the measurement and learning loop](issues/13-define-measurement-learning-loop.md): manual social snapshots plus project funnel reads, experiment-driven measure Work Orders, decision records feeding a per-project learning log, and ladder-labeled correlation-by-default attribution.
 - [Define authentication, authorization, and secrets design](issues/18-define-auth-and-secrets.md): MCP-spec OAuth for hosts, a single passkey Operator account, per-project service tokens, and one encrypted secrets store with reference-only usage and lint-checked responses.
+- [Research platform policies for warm-up actions](issues/19-research-platform-policies-for-warmup.md): manual genuine engagement is permitted on all four platforms, the same failure modes are banned everywhere, disclosure is platform-level on three, and only X publishes numeric limits, so non-X caps ship as labeled judgment calls.
 
 ## Not yet specified
 
