@@ -1,3 +1,10 @@
+"use client";
+
+async function signOut() {
+  await fetch("/api/auth/logout", { method: "POST" });
+  window.location.href = "/login";
+}
+
 export default function Home() {
   return (
     <main
@@ -16,6 +23,21 @@ export default function Home() {
         endpoint at <code>/mcp</code> and call <code>marketingos.onboard</code> to
         get started.
       </p>
+      <button
+        onClick={signOut}
+        style={{
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "0.85rem",
+          marginTop: "2rem",
+          padding: "0.4rem 0.9rem",
+          background: "transparent",
+          color: "#5a574f",
+          border: "1px solid #d8d5cf",
+          cursor: "pointer",
+        }}
+      >
+        Sign out
+      </button>
     </main>
   );
 }

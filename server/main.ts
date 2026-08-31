@@ -1,5 +1,7 @@
 import express from "express";
 import next from "next";
+import { isPublicPath, validateSession } from "./auth";
+import { authRouter, sessionTokenFrom } from "./auth-routes";
 import { getDb } from "./db";
 import { getHealth } from "./health";
 import { startJobRunner } from "./jobs";
@@ -48,7 +50,19 @@ async function main(): Promise<void> {
     });
   });
 
-  server.use((req, res) => nextHandler(req, res));
+  server.use("/api/auth", authRouter());
+
+  server.use((req, res) => {
+    if (!isPublicPath(req.path) && validateSession(sessionTokenFrom(req)) === null) {
+      if (req.method === "GET" && (req.headers.accept ?? "").includes("text/html")) {
+        res.redirect(302, "/login");
+      } else {
+        res.status(401).json({ error: "Authentication required" });
+      }
+      return;
+    }
+    return nextHandler(req, res);
+  });
 
   server.listen(port, () => {
     log("info", "marketingos listening", { port, dev });

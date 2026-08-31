@@ -2,15 +2,17 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
-export const DB_PATH =
-  process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "marketingos.db");
+export function dbPath(): string {
+  return process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "marketingos.db");
+}
 
 let db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (db) return db;
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  db = new Database(DB_PATH);
+  const file = dbPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
@@ -51,6 +53,27 @@ function migrate(d: Database.Database): void {
     BEGIN
       SELECT RAISE(ABORT, 'audit_log is append-only');
     END;
+    CREATE TABLE IF NOT EXISTS operators (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      handle TEXT NOT NULL UNIQUE,
+      recovery_code_hash TEXT NOT NULL,
+      recovery_code_salt TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id TEXT PRIMARY KEY,
+      operator_id INTEGER NOT NULL REFERENCES operators(id),
+      public_key BLOB NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      transports TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY,
+      operator_id INTEGER NOT NULL REFERENCES operators(id),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      expires_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,
