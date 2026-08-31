@@ -1,0 +1,63 @@
+import express from "express";
+import next from "next";
+import { getDb } from "./db";
+import { getHealth } from "./health";
+import { startJobRunner } from "./jobs";
+import { log, newRequestId } from "./log";
+import { handleMcpRequest } from "./mcp";
+
+const dev = process.env.NODE_ENV !== "production";
+const port = Number(process.env.PORT ?? 3000);
+
+async function main(): Promise<void> {
+  getDb();
+  startJobRunner();
+
+  const app = next({ dev });
+  await app.prepare();
+  const nextHandler = app.getRequestHandler();
+
+  const server = express();
+  server.disable("x-powered-by");
+
+  server.use((req, res, nextFn) => {
+    const requestId = newRequestId();
+    res.setHeader("x-request-id", requestId);
+    res.on("finish", () => {
+      log("info", "request", {
+        requestId,
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+      });
+    });
+    nextFn();
+  });
+
+  server.get("/health", async (_req, res) => {
+    const report = await getHealth();
+    res.status(report.status === "ok" ? 200 : 503).json(report);
+  });
+
+  server.post("/mcp", express.json({ limit: "4mb" }), handleMcpRequest);
+  server.get("/mcp", (_req, res) => {
+    res.status(405).json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Method not allowed. POST JSON-RPC to this endpoint." },
+      id: null,
+    });
+  });
+
+  server.use((req, res) => nextHandler(req, res));
+
+  server.listen(port, () => {
+    log("info", "marketingos listening", { port, dev });
+  });
+}
+
+main().catch((err) => {
+  log("error", "fatal startup error", {
+    error: err instanceof Error ? err.stack ?? err.message : String(err),
+  });
+  process.exit(1);
+});
