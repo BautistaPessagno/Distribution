@@ -171,6 +171,26 @@ function migrate(d: Database.Database): void {
       manifest TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS brand_kits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      version INTEGER NOT NULL,
+      tokens TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT 'operator',
+      summary TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (project_id, version)
+    );
+    CREATE TRIGGER IF NOT EXISTS brand_kits_no_update
+    BEFORE UPDATE ON brand_kits
+    BEGIN
+      SELECT RAISE(ABORT, 'brand_kits is append-only');
+    END;
+    CREATE TRIGGER IF NOT EXISTS brand_kits_no_delete
+    BEFORE DELETE ON brand_kits
+    BEGIN
+      SELECT RAISE(ABORT, 'brand_kits is append-only');
+    END;
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,

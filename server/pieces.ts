@@ -45,7 +45,17 @@ const frameSchema = z
   .optional();
 
 export const pieceLayerSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text"), text: z.string(), role: z.string().optional(), frame: frameSchema }),
+  // `color` and `font` name Brand Kit tokens (brand.<name>, font.<name>).
+  // Raw values parse — the renderer still paints them — but check_brand
+  // reports them as off-kit errors (ticket 12).
+  z.object({
+    type: z.literal("text"),
+    text: z.string(),
+    role: z.string().optional(),
+    color: z.string().optional(),
+    font: z.string().optional(),
+    frame: frameSchema,
+  }),
   z.object({ type: z.literal("image"), ref: z.string(), alt: z.string().optional(), frame: frameSchema }),
   z.object({ type: z.literal("shape"), shape: z.string(), fill: z.string().optional(), frame: frameSchema }),
   z.object({ type: z.literal("logo"), variant: z.string().optional(), frame: frameSchema }),

@@ -1,6 +1,8 @@
 import express, { type Request, type Response, type Router } from "express";
 import { validateSession } from "./auth";
 import { sessionTokenFrom } from "./auth-routes";
+import { currentKit } from "./brand-kit";
+import { reportsForPiece } from "./checks";
 import { listVersionsForPiece } from "./piece-edits";
 import { getPieceById, listAllPieces } from "./pieces";
 import { listProjects } from "./projects";
@@ -24,11 +26,23 @@ export function pieceRouter(): Router {
 
   router.get("/", (_req, res) => {
     const names = projectNames();
+    // Pieces hold token references; the kit holds the values. Studio needs
+    // both to paint a piece, and a kit change repaints it with no document
+    // change at all.
+    const kits = new Map<number, ReturnType<typeof currentKit>>();
     res.json({
-      pieces: listAllPieces().map((piece) => ({
-        ...piece,
-        projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
-      })),
+      pieces: listAllPieces().map((piece) => {
+        let kit = kits.get(piece.projectId);
+        if (!kit) {
+          kit = currentKit(piece.projectId);
+          kits.set(piece.projectId, kit);
+        }
+        return {
+          ...piece,
+          projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
+          kit,
+        };
+      }),
     });
   });
 
@@ -44,6 +58,22 @@ export function pieceRouter(): Router {
       return;
     }
     res.json({ versions: listVersionsForPiece(id) });
+  });
+
+  // check_brand and check_quality for one piece, so Studio shows what gates
+  // approval and what only advises.
+  router.get("/:id/checks", (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid piece id" });
+      return;
+    }
+    const reports = reportsForPiece(id);
+    if (!reports) {
+      res.status(404).json({ error: `No piece #${id}` });
+      return;
+    }
+    res.json(reports);
   });
 
   router.get("/:id", (req, res) => {
@@ -63,6 +93,7 @@ export function pieceRouter(): Router {
         ...piece,
         projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
       },
+      kit: currentKit(piece.projectId),
     });
   });
 

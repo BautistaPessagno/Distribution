@@ -24,6 +24,12 @@ export const ONBOARD_GUIDE = {
       "Create a Creative Piece from a PieceDoc bound to the pinned Project Snapshot. It starts in the backlog for Operator review in Studio.",
     "marketingos.get_piece": "Read one Creative Piece with its full PieceDoc. Cross-project access is refused.",
     "marketingos.list_pieces": "List the selected project's Creative Pieces with status tags.",
+    "marketingos.get_brand_kit":
+      "Read the selected project's Brand Kit: the versioned token table pieces reference. Pieces hold token names, never copied values.",
+    "marketingos.check_brand":
+      "Deterministic brand check over a piece: off-kit colors and fonts, empty text layers, and missing assets are errors that block approval; overflow risk is a warning.",
+    "marketingos.check_quality":
+      "Heuristic quality check over a piece. Every finding is advisory and never blocks anything.",
     "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
     "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },
