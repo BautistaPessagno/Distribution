@@ -134,7 +134,7 @@ function buildServer(sessionKey: string): McpServer {
     "marketingos.get_brand_kit",
     {
       description:
-        "Read the Brand Kit of the selected Connected Project: the versioned token table (brand.<name> colours, font.<name> families) that Creative Pieces reference. Pieces hold token names, never copied values, so a kit change repaints backlog and drafting pieces.",
+        "Read the Brand Kit of the selected Connected Project: the versioned token table (brand.<name> colors, font.<name> families) that Creative Pieces reference. Pieces hold token names, never copied values, so a kit change repaints backlog and drafting pieces.",
       inputSchema: {},
     },
     async () => {
@@ -150,7 +150,7 @@ function buildServer(sessionKey: string): McpServer {
     "marketingos.check_brand",
     {
       description:
-        "Run the deterministic brand check over a Creative Piece against its Brand Kit: off-kit colours and fonts, empty text layers, and missing assets are errors that block approval; overflow risk is a warning that does not. Every finding names the slide and layer it is about.",
+        "Run the deterministic brand check over a Creative Piece against its Brand Kit: off-kit colors and fonts, empty text layers, and missing assets are errors that block approval; overflow risk is a warning that does not. Every finding names the slide and layer it is about.",
       inputSchema: { id: z.number() },
     },
     async ({ id }) => lintedJson(checkBrand(sessionKey, { id }).response)

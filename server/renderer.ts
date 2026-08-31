@@ -140,7 +140,7 @@ export interface ExportManifest {
   pieceId: number;
   title: string;
   docVersion: number;
-  kitVersion: number | null;
+  kitVersion: number;
   format: string;
   files: { name: string; kind: "png" | "captions"; slide?: number; sourceHtmlSha256?: string }[];
   createdAt: string;
@@ -178,7 +178,6 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
 
   const doc = docAtVersion(piece.id, piece.docVersion) ?? piece.doc;
   const kit = currentKit(piece.projectId);
-  const kitVersion: number | null = kit.version;
   const bundleName = `piece-${piece.id}-v${piece.docVersion}`;
   const bundleDir = path.join(exportsRoot(), bundleName);
   fs.mkdirSync(bundleDir, { recursive: true });
@@ -205,7 +204,7 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
     pieceId: piece.id,
     title: piece.title,
     docVersion: piece.docVersion,
-    kitVersion,
+    kitVersion: kit.version,
     format: doc.format,
     files,
     createdAt: new Date().toISOString(),
@@ -216,13 +215,13 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
     .prepare(
       "INSERT INTO piece_exports (piece_id, doc_version, kit_version, bundle_path, manifest) VALUES (?, ?, ?, ?, ?)"
     )
-    .run(piece.id, piece.docVersion, kitVersion, path.join("data", "exports", bundleName), JSON.stringify(manifest));
+    .run(piece.id, piece.docVersion, kit.version, path.join("data", "exports", bundleName), JSON.stringify(manifest));
 
   audit("ai-host", "pieces.exported", {
     pieceId: piece.id,
     projectId: piece.projectId,
     docVersion: piece.docVersion,
-    kitVersion,
+    kitVersion: kit.version,
     slides: doc.slides.length,
     bundle: bundleName,
   });

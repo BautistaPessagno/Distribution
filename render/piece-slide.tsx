@@ -54,7 +54,7 @@ export const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }
 
 export type BrandTokens = Record<string, string>;
 
-// The kit every Connected Project starts from. Colours are `brand.*`, type
+// The kit every Connected Project starts from. Colors are `brand.*`, type
 // families are `font.*`; a piece names a token, the kit holds the value.
 export const DEFAULT_BRAND_TOKENS: BrandTokens = {
   "brand.ink": "#1f1b16",
@@ -64,8 +64,13 @@ export const DEFAULT_BRAND_TOKENS: BrandTokens = {
   "font.body": "Arial, Helvetica, sans-serif",
 };
 
-export const COLOR_TOKEN_PREFIX = "brand.";
-export const FONT_TOKEN_PREFIX = "font.";
+// The one place the token vocabulary is written down. Everything that
+// validates, edits, or checks a token reference reads these, so adding a
+// namespace is one edit, not four.
+const COLOR_TOKEN_PREFIX = "brand.";
+const FONT_TOKEN_PREFIX = "font.";
+export const TOKEN_NAME_PATTERN = /^(brand|font)\.[a-z][a-z0-9-]*$/;
+export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 export function isColorToken(value: string): boolean {
   return value.startsWith(COLOR_TOKEN_PREFIX);
@@ -75,7 +80,7 @@ export function isFontToken(value: string): boolean {
   return value.startsWith(FONT_TOKEN_PREFIX);
 }
 
-// Rendering never fails on an off-kit value: a raw colour paints as itself
+// Rendering never fails on an off-kit value: a raw color paints as itself
 // and an unknown token falls back to ink, so the Operator sees the piece.
 // `check_brand` is what reports those values as errors.
 export function resolveColor(
@@ -85,7 +90,7 @@ export function resolveColor(
   const ink = tokens["brand.ink"] ?? DEFAULT_BRAND_TOKENS["brand.ink"];
   if (!value) return ink;
   if (isColorToken(value)) return tokens[value] ?? ink;
-  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toLowerCase();
+  if (HEX_COLOR_PATTERN.test(value)) return value.toLowerCase();
   return ink;
 }
 
@@ -122,15 +127,30 @@ export function defaultFontToken(role: string | undefined): string {
   return role === "headline" ? "font.display" : "font.body";
 }
 
-export const CANVAS_PADDING_RATIO = 0.05;
+const CANVAS_PADDING_RATIO = 0.05;
 
-// The box a text layer is laid out in, in export pixels: its own frame, or
-// the padded canvas when it has none. `check_brand`'s overflow test and the
+// One line-height for the renderer and for check_brand's overflow estimate,
+// so the warning cannot drift away from what is actually laid out.
+export const TEXT_LINE_HEIGHT = 1.25;
+
+// The gap the slide's flex column puts between unframed layers.
+export function stackGap(format: string): number {
+  const { height } = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
+  return Math.round(height * 0.02);
+}
+
+// The content box of the slide itself: the canvas minus its padding. Every
+// unframed layer is stacked inside this one box.
+export function slideContentBox(format: string): { width: number; height: number } {
+  const { width, height } = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
+  const padding = Math.round(height * CANVAS_PADDING_RATIO);
+  return { width: width - padding * 2, height: height - padding * 2 };
+}
+
+// The box one layer is laid out in, in export pixels: its own frame, or the
+// slide content box when it has none. `check_brand`'s overflow test and the
 // renderer agree because both read this.
-export function textLayerBox(
-  layer: RenderLayer,
-  format: string
-): { width: number; height: number } {
+export function layerBox(layer: RenderLayer, format: string): { width: number; height: number } {
   const { width, height } = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
   if (layer.frame) {
     return {
@@ -138,13 +158,29 @@ export function textLayerBox(
       height: Math.round(layer.frame.h * height),
     };
   }
-  const padding = Math.round(height * CANVAS_PADDING_RATIO);
-  return { width: width - padding * 2, height: height - padding * 2 };
+  return slideContentBox(format);
+}
+
+// The height an unframed non-text layer takes in the stack. The renderer
+// sets it as a minimum; check_brand's overflow estimate adds it up.
+export function intrinsicLayerHeight(layer: RenderLayer, format: string): number {
+  const { height } = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
+  switch (layer.type) {
+    case "image":
+      return Math.round(height * 0.25);
+    case "shape":
+      return Math.round(height * 0.08);
+    case "logo":
+      return Math.round(height * 0.03);
+    default:
+      return 0;
+  }
 }
 
 function layerView(
   layer: RenderLayer,
   index: number,
+  format: string,
   width: number,
   height: number,
   tokens: BrandTokens
@@ -165,7 +201,7 @@ function layerView(
             fontFamily: resolveFont(layer.font, defaultFontToken(layer.role), tokens),
             fontSize: textSize(layer.role, height),
             fontWeight: layer.role === "headline" ? 700 : 400,
-            lineHeight: 1.25,
+            lineHeight: TEXT_LINE_HEIGHT,
             whiteSpace: "pre-wrap",
           }}
         >
@@ -179,7 +215,7 @@ function layerView(
           data-layer={`${index}-image`}
           style={{
             ...placed,
-            minHeight: layer.frame ? undefined : Math.round(height * 0.25),
+            minHeight: layer.frame ? undefined : intrinsicLayerHeight(layer, format),
             background: "repeating-linear-gradient(45deg, #d8d2c6, #d8d2c6 24px, #e6e0d4 24px, #e6e0d4 48px)",
             border: `2px dashed ${resolveColor("brand.ink", tokens)}`,
             display: "flex",
@@ -201,7 +237,7 @@ function layerView(
           data-layer={`${index}-shape`}
           style={{
             ...placed,
-            minHeight: layer.frame ? undefined : Math.round(height * 0.08),
+            minHeight: layer.frame ? undefined : intrinsicLayerHeight(layer, format),
             backgroundColor: resolveColor(layer.fill, tokens),
             borderRadius: layer.shape === "circle" ? "50%" : 0,
           }}
@@ -263,11 +299,11 @@ export function SlideView({ slide, format, tokens }: SlideViewProps): ReactEleme
         boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
-        gap: Math.round(height * 0.02),
+        gap: stackGap(format),
         overflow: "hidden",
       }}
     >
-      {slide.layers.map((layer, index) => layerView(layer, index, width, height, kit))}
+      {slide.layers.map((layer, index) => layerView(layer, index, format, width, height, kit))}
     </div>
   );
 }

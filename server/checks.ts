@@ -5,7 +5,7 @@
 // Two passes, and the difference between them is the whole point:
 //
 //   check_brand   deterministic facts about the document against the Brand
-//                 Kit — off-kit colours and fonts, empty text layers,
+//                 Kit — off-kit colors and fonts, empty text layers,
 //                 missing assets (errors) and overflow risk (warnings).
 //                 Its errors are what gate approval (ticket 13).
 //
@@ -21,25 +21,33 @@ import { scopedPiece } from "./piece-edits";
 import { getPieceById, type PieceDoc } from "./pieces";
 import {
   FORMAT_DIMENSIONS,
+  intrinsicLayerHeight,
   isColorToken,
   isFontToken,
-  textLayerBox,
+  layerBox,
+  slideContentBox,
+  stackGap,
   textSize,
+  TEXT_LINE_HEIGHT,
   type BrandTokens,
   type RenderLayer,
 } from "../render/piece-slide";
 
 export type CheckSeverity = "error" | "warning" | "advisory";
 
-export interface CheckFinding {
+/** Where a finding is, in the coordinates the Operator and the edit ops use. */
+export interface LayerLocation {
+  /** 1-based slide number, or null for a finding about the whole document. */
+  slide: number | null;
+  /** 0-based layer index within the slide, or null for a whole-slide finding. */
+  layer: number | null;
+  /** Human label naming what the finding is about. */
+  where: string;
+}
+
+export interface CheckFinding extends LayerLocation {
   code: string;
   severity: CheckSeverity;
-  /** 1-based slide number, as the Operator counts slides. */
-  slide: number;
-  /** 0-based layer index within the slide, as the edit ops address them. */
-  layer: number | null;
-  /** Human label naming the layer the finding is about. */
-  where: string;
   message: string;
 }
 
@@ -57,160 +65,146 @@ export interface QualityCheckReport {
   findings: CheckFinding[];
 }
 
-function layerLabel(slideIndex: number, layerIndex: number, layer: RenderLayer): string {
-  return `slide ${slideIndex + 1}, layer ${layerIndex} (${layer.type})`;
+function at(slideIndex: number, layerIndex: number, layer: RenderLayer): LayerLocation {
+  return {
+    slide: slideIndex + 1,
+    layer: layerIndex,
+    where: `slide ${slideIndex + 1}, layer ${layerIndex} (${layer.type})`,
+  };
 }
+
+function atSlide(slideIndex: number): LayerLocation {
+  return { slide: slideIndex + 1, layer: null, where: `slide ${slideIndex + 1}` };
+}
+
+const WHOLE_DOCUMENT: LayerLocation = { slide: null, layer: null, where: "captions" };
 
 function finding(
   code: string,
   severity: CheckSeverity,
-  slideIndex: number,
-  layerIndex: number | null,
-  where: string,
+  location: LayerLocation,
   message: string
 ): CheckFinding {
-  return { code, severity, slide: slideIndex + 1, layer: layerIndex, where, message };
+  return { code, severity, ...location, message };
 }
 
-// A colour reference is on-kit only when it names a kit token. A raw hex
-// value renders (so the Operator can see it) but is an error: pieces
-// reference tokens, never copied values.
-function colorFindings(
+// A token reference is on-kit only when it names a token this kit holds. A
+// raw value renders (so the Operator can see the piece) but is an error:
+// pieces reference tokens, never copied values.
+function offKitFindings(
   value: string | undefined,
-  field: string,
+  field: "fill" | "color" | "font",
   tokens: BrandTokens,
-  slideIndex: number,
-  layerIndex: number,
-  where: string
+  location: LayerLocation
 ): CheckFinding[] {
   if (value === undefined) return [];
-  if (isColorToken(value)) {
+  const isToken = field === "font" ? isFontToken(value) : isColorToken(value);
+  if (isToken) {
     if (value in tokens) return [];
     return [
       finding(
         "off_kit_token",
         "error",
-        slideIndex,
-        layerIndex,
-        where,
-        `${where} sets ${field} to "${value}", which is not a token in this Brand Kit.`
+        location,
+        `${location.where} sets ${field} to "${value}", which is not a token in this Brand Kit.`
       ),
     ];
   }
+  const kind = field === "font" ? "font family" : "color";
   return [
     finding(
-      "off_kit_color",
+      field === "font" ? "off_kit_font" : "off_kit_color",
       "error",
-      slideIndex,
-      layerIndex,
-      where,
-      `${where} sets ${field} to the raw colour "${value}" instead of a Brand Kit token.`
+      location,
+      `${location.where} sets ${field} to the raw ${kind} "${value}" instead of a Brand Kit token.`
     ),
   ];
 }
 
-function fontFindings(
-  value: string | undefined,
-  tokens: BrandTokens,
-  slideIndex: number,
-  layerIndex: number,
-  where: string
-): CheckFinding[] {
-  if (value === undefined) return [];
-  if (isFontToken(value)) {
-    if (value in tokens) return [];
-    return [
-      finding(
-        "off_kit_token",
-        "error",
-        slideIndex,
-        layerIndex,
-        where,
-        `${where} sets font to "${value}", which is not a token in this Brand Kit.`
-      ),
-    ];
-  }
-  return [
-    finding(
-      "off_kit_font",
-      "error",
-      slideIndex,
-      layerIndex,
-      where,
-      `${where} sets font to the raw family "${value}" instead of a Brand Kit token.`
-    ),
-  ];
-}
-
-// Deterministic overflow estimate in the same box, at the same type size,
-// the renderer lays the layer out in — so the warning tracks what the
-// Operator actually sees.
-function overflows(layer: RenderLayer, format: string): { lines: number; needed: number; box: number } | null {
+// The height a text layer needs inside a box of the given width, at the type
+// size and line height the renderer lays it out with.
+function textHeight(layer: RenderLayer, format: string, boxWidth: number): number {
   const text = layer.text ?? "";
-  if (text.trim() === "") return null;
-  const { height } = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
-  const size = textSize(layer.role, height);
-  const box = textLayerBox(layer, format);
-  const charsPerLine = Math.max(1, Math.floor(box.width / (size * 0.55)));
+  if (text.trim() === "") return 0;
+  const canvas = FORMAT_DIMENSIONS[format] ?? FORMAT_DIMENSIONS["1:1"];
+  const size = textSize(layer.role, canvas.height);
+  const charsPerLine = Math.max(1, Math.floor(boxWidth / (size * 0.55)));
   const lines = text
     .split("\n")
     .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
-  const needed = Math.ceil(lines * size * 1.25);
-  return needed > box.height ? { lines, needed, box: box.height } : null;
+  return Math.ceil(lines * size * TEXT_LINE_HEIGHT);
+}
+
+// A framed layer overflows its own frame. Unframed layers all stack in the
+// one slide content box, so they overflow together or not at all — checking
+// them one at a time against the whole canvas would never fire.
+function overflowFindings(slide: { layers: RenderLayer[] }, format: string, slideIndex: number): CheckFinding[] {
+  const findings: CheckFinding[] = [];
+  const content = slideContentBox(format);
+  let stacked = 0;
+  let unframed = 0;
+
+  slide.layers.forEach((layer, layerIndex) => {
+    if (layer.frame) {
+      if (layer.type !== "text") return;
+      const box = layerBox(layer, format);
+      const needed = textHeight(layer, format, box.width);
+      if (needed > box.height) {
+        findings.push(
+          finding(
+            "text_overflow",
+            "warning",
+            at(slideIndex, layerIndex, layer),
+            `${at(slideIndex, layerIndex, layer).where} needs about ${needed}px of height but its frame is ${box.height}px tall; the text may overflow.`
+          )
+        );
+      }
+      return;
+    }
+    unframed += 1;
+    stacked +=
+      layer.type === "text"
+        ? textHeight(layer, format, content.width)
+        : intrinsicLayerHeight(layer, format);
+  });
+
+  if (unframed > 1) stacked += (unframed - 1) * stackGap(format);
+  if (unframed > 0 && stacked > content.height) {
+    findings.push(
+      finding(
+        "slide_overflow",
+        "warning",
+        atSlide(slideIndex),
+        `slide ${slideIndex + 1} stacks ${unframed} unframed layer(s) needing about ${stacked}px inside a ${content.height}px canvas; the content may overflow.`
+      )
+    );
+  }
+  return findings;
 }
 
 export function checkBrandDoc(doc: PieceDoc, tokens: BrandTokens): CheckFinding[] {
   const findings: CheckFinding[] = [];
   doc.slides.forEach((slide, slideIndex) => {
-    slide.layers.forEach((layer, layerIndex) => {
-      const where = layerLabel(slideIndex, layerIndex, layer as RenderLayer);
-      const l = layer as RenderLayer;
+    const layers = slide.layers as RenderLayer[];
+    layers.forEach((layer, layerIndex) => {
+      const location = at(slideIndex, layerIndex, layer);
 
-      findings.push(...colorFindings(l.fill, "fill", tokens, slideIndex, layerIndex, where));
-      findings.push(...colorFindings(l.color, "colour", tokens, slideIndex, layerIndex, where));
-      findings.push(...fontFindings(l.font, tokens, slideIndex, layerIndex, where));
+      findings.push(...offKitFindings(layer.fill, "fill", tokens, location));
+      findings.push(...offKitFindings(layer.color, "color", tokens, location));
+      findings.push(...offKitFindings(layer.font, "font", tokens, location));
 
-      if (l.type === "text") {
-        if ((l.text ?? "").trim() === "") {
-          findings.push(
-            finding("empty_text", "error", slideIndex, layerIndex, where, `${where} is an empty text layer.`)
-          );
-        }
-        const over = overflows(l, doc.format);
-        if (over) {
-          findings.push(
-            finding(
-              "text_overflow",
-              "warning",
-              slideIndex,
-              layerIndex,
-              where,
-              `${where} needs about ${over.needed}px across ${over.lines} lines but its box is ${over.box}px tall; the text may overflow.`
-            )
-          );
-        }
-        // A token that resolves to the same colour as the background is
-        // legal but invisible — worth a warning, never a block.
-        if (l.color && tokens[l.color] && tokens[l.color] === tokens["brand.paper"]) {
-          findings.push(
-            finding(
-              "invisible_text",
-              "warning",
-              slideIndex,
-              layerIndex,
-              where,
-              `${where} uses ${l.color}, the same colour as the slide background.`
-            )
-          );
-        }
-      }
-
-      if (l.type === "image" && (l.ref ?? "").trim() === "") {
+      if (layer.type === "text" && (layer.text ?? "").trim() === "") {
         findings.push(
-          finding("missing_asset", "error", slideIndex, layerIndex, where, `${where} names no asset.`)
+          finding("empty_text", "error", location, `${location.where} is an empty text layer.`)
+        );
+      }
+      if (layer.type === "image" && (layer.ref ?? "").trim() === "") {
+        findings.push(
+          finding("missing_asset", "error", location, `${location.where} names no asset.`)
         );
       }
     });
+    findings.push(...overflowFindings({ layers }, doc.format, slideIndex));
   });
   return findings;
 }
@@ -218,9 +212,9 @@ export function checkBrandDoc(doc: PieceDoc, tokens: BrandTokens): CheckFinding[
 export function checkQualityDoc(doc: PieceDoc): CheckFinding[] {
   const findings: CheckFinding[] = [];
   doc.slides.forEach((slide, slideIndex) => {
-    const where = `slide ${slideIndex + 1}`;
+    const location = atSlide(slideIndex);
     if (slide.layers.length === 0) {
-      findings.push(finding("empty_slide", "advisory", slideIndex, null, where, `${where} is empty.`));
+      findings.push(finding("empty_slide", "advisory", location, `${location.where} is empty.`));
       return;
     }
     if (slide.layers.length > 5) {
@@ -228,10 +222,8 @@ export function checkQualityDoc(doc: PieceDoc): CheckFinding[] {
         finding(
           "crowded_slide",
           "advisory",
-          slideIndex,
-          null,
-          where,
-          `${where} has ${slide.layers.length} layers; the composition looks crowded.`
+          location,
+          `${location.where} has ${slide.layers.length} layers; the composition looks crowded.`
         )
       );
     }
@@ -240,10 +232,8 @@ export function checkQualityDoc(doc: PieceDoc): CheckFinding[] {
         finding(
           "no_text",
           "advisory",
-          slideIndex,
-          null,
-          where,
-          `${where} has no text layer; the hierarchy is unclear.`
+          location,
+          `${location.where} has no text layer; the hierarchy is unclear.`
         )
       );
     }
@@ -252,14 +242,14 @@ export function checkQualityDoc(doc: PieceDoc): CheckFinding[] {
     .filter(([, caption]) => caption.trim() === "")
     .map(([network]) => network);
   if (emptyCaptions.length > 0) {
-    findings.push({
-      code: "empty_caption",
-      severity: "advisory",
-      slide: 0,
-      layer: null,
-      where: "captions",
-      message: `No caption written for ${emptyCaptions.join(", ")}.`,
-    });
+    findings.push(
+      finding(
+        "empty_caption",
+        "advisory",
+        WHOLE_DOCUMENT,
+        `No caption written for ${emptyCaptions.join(", ")}.`
+      )
+    );
   }
   return findings;
 }

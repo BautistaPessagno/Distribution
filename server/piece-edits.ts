@@ -18,6 +18,12 @@ import {
   type GatewayResult,
 } from "./gateway";
 import {
+  HEX_COLOR_PATTERN,
+  isColorToken,
+  isFontToken,
+  TOKEN_NAME_PATTERN,
+} from "../render/piece-slide";
+import {
   CAPTION_NETWORKS,
   getPieceById,
   pieceDocSchema,
@@ -36,11 +42,18 @@ export const EDITABLE_STATUSES: readonly PieceStatus[] = ["backlog", "drafting"]
 export const REOPEN_PATH = "marketingos.reopen_piece";
 
 const FILL_FALLBACK = "brand.ink";
-const FILL_PATTERN = /^(#[0-9a-fA-F]{6}|brand\.[a-z][a-z0-9-]*)$/;
 const FONT_FALLBACK = "font.body";
-// A font value is a kit token or a raw family name; check_brand is what
-// reports the raw one as off-kit.
-const FONT_PATTERN = /^(font\.[a-z][a-z0-9-]*|[A-Za-z][\w '",.-]{0,199})$/;
+
+// A cosmetic value is a Brand Kit token or a raw value the renderer can
+// paint; check_brand is what reports the raw one as off-kit.
+function isValidFill(value: string): boolean {
+  return HEX_COLOR_PATTERN.test(value) || (isColorToken(value) && TOKEN_NAME_PATTERN.test(value));
+}
+
+function isValidFont(value: string): boolean {
+  if (isFontToken(value)) return TOKEN_NAME_PATTERN.test(value);
+  return /^[A-Za-z][\w '",.-]{0,199}$/.test(value);
+}
 
 const indexSchema = z.number().int().min(0);
 
@@ -163,7 +176,7 @@ function structuralError(doc: PieceDoc, op: EditOp): string | null {
   if (op.op === "set_text" && layer.type !== "text")
     return `set_text targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only text layers hold text.`;
   if (op.op === "set_fill" && layer.type !== "shape" && layer.type !== "text")
-    return `set_fill targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only shape and text layers hold a colour.`;
+    return `set_fill targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only shape and text layers hold a color.`;
   if (op.op === "set_font" && layer.type !== "text")
     return `set_font targets a ${layer.type} layer (slide ${op.slide}, layer ${op.layer}); only text layers hold a font.`;
   return null;
@@ -186,7 +199,7 @@ function applyOps(
       }
       case "set_fill": {
         let fill = op.value;
-        if (!FILL_PATTERN.test(fill)) {
+        if (!isValidFill(fill)) {
           warnings.push(`Cosmetic value "${fill}" is invalid; fell back to ${FILL_FALLBACK}.`);
           fill = FILL_FALLBACK;
         }
@@ -198,7 +211,7 @@ function applyOps(
       }
       case "set_font": {
         let font = op.value;
-        if (!FONT_PATTERN.test(font)) {
+        if (!isValidFont(font)) {
           warnings.push(`Cosmetic value "${font}" is invalid; fell back to ${FONT_FALLBACK}.`);
           font = FONT_FALLBACK;
         }

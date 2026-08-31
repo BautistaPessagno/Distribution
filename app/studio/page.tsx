@@ -78,7 +78,8 @@ interface PieceVersion {
 interface CheckFinding {
   code: string;
   severity: "error" | "warning" | "advisory";
-  slide: number;
+  /** 1-based slide number, or null for a finding about the whole document. */
+  slide: number | null;
   layer: number | null;
   where: string;
   message: string;
@@ -93,7 +94,7 @@ function layerLabel(layer: PieceLayer): string {
   switch (layer.type) {
     case "text":
       return `text${layer.role ? ` (${layer.role})` : ""}: ${layer.text ?? ""}${
-        layer.color ? ` · colour ${layer.color}` : ""
+        layer.color ? ` · color ${layer.color}` : ""
       }${layer.font ? ` · font ${layer.font}` : ""}`;
     case "image":
       return `image: ${layer.ref ?? ""}${layer.alt ? ` — ${layer.alt}` : ""}`;
@@ -105,7 +106,7 @@ function layerLabel(layer: PieceLayer): string {
 }
 
 // The Brand Kit panel: token references are what pieces hold, so this is the
-// one place a colour or family is actually written down.
+// one place a color or family is actually written down.
 function BrandKitPanel({
   kit,
   onChanged,

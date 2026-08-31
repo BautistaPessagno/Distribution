@@ -14,7 +14,12 @@
 import { z } from "zod";
 import { audit } from "./audit";
 import { getDb } from "./db";
-import { DEFAULT_BRAND_TOKENS, type BrandTokens } from "../render/piece-slide";
+import {
+  DEFAULT_BRAND_TOKENS,
+  HEX_COLOR_PATTERN,
+  TOKEN_NAME_PATTERN,
+  type BrandTokens,
+} from "../render/piece-slide";
 
 export const REQUIRED_TOKENS = [
   "brand.ink",
@@ -24,8 +29,6 @@ export const REQUIRED_TOKENS = [
   "font.body",
 ] as const;
 
-const TOKEN_NAME_PATTERN = /^(brand|font)\.[a-z][a-z0-9-]*$/;
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const MAX_FONT_VALUE = 200;
 
 export interface BrandKit {
@@ -82,7 +85,7 @@ export function validateTokens(tokens: BrandTokens): string[] {
       continue;
     }
     if (name.startsWith("brand.") && !HEX_COLOR_PATTERN.test(value)) {
-      problems.push(`Token "${name}" must be a #rrggbb colour, not "${value}".`);
+      problems.push(`Token "${name}" must be a #rrggbb color, not "${value}".`);
     }
     if (name.startsWith("font.") && value.length > MAX_FONT_VALUE) {
       problems.push(`Token "${name}" names a font family longer than ${MAX_FONT_VALUE} characters.`);
@@ -138,16 +141,20 @@ export function listKitVersions(projectId: number): BrandKit[] {
 }
 
 export const kitUpdateSchema = z.object({
-  tokens: z.record(z.string(), z.string()).refine((t) => Object.keys(t).length > 0, {
-    message: "Name at least one token to change",
-  }),
+  // A string sets a token; null removes one, so a token added by mistake is
+  // not permanent. The required tokens cannot be removed.
+  tokens: z
+    .record(z.string(), z.union([z.string(), z.null()]))
+    .refine((t) => Object.keys(t).length > 0, {
+      message: "Name at least one token to change",
+    }),
   summary: z.string().max(200).optional(),
 });
 
 /**
- * Change one or more tokens. The change is a merge onto the current kit and
- * mints version + 1; no piece document is touched, so every backlog and
- * drafting piece repaints on its next render.
+ * Set or remove tokens. The change is a merge onto the current kit and mints
+ * version + 1; no piece document is touched, so every backlog and drafting
+ * piece repaints on its next render.
  */
 export function updateKit(
   projectId: number,
@@ -163,7 +170,11 @@ export function updateKit(
   }
 
   const current = currentKit(projectId);
-  const next: BrandTokens = { ...current.tokens, ...parsed.data.tokens };
+  const next: BrandTokens = { ...current.tokens };
+  for (const [name, value] of Object.entries(parsed.data.tokens)) {
+    if (value === null) delete next[name];
+    else next[name] = value;
+  }
   const problems = validateTokens(next);
   if (problems.length > 0) {
     throw new BrandKitError("The kit change was rejected; the kit is unchanged.", problems);
@@ -182,9 +193,4 @@ export function updateKit(
     changed,
   });
   return kit;
-}
-
-/** The token names a piece may reference, for error messages and the UI. */
-export function tokenNames(kit: BrandKit): string[] {
-  return Object.keys(kit.tokens).sort();
 }

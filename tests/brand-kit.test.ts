@@ -1,10 +1,10 @@
 // Brand Kit and deterministic checks (ticket 12; reference behavior:
-// CreativePieceMachine walkthrough 3 "off-kit colour blocks approval" and
+// CreativePieceMachine walkthrough 3 "off-kit color blocks approval" and
 // the `UPDATE_BRAND_KIT` reducer in creative-piece-workflow.html).
 //
 // The three things this ticket promises:
 //   1. changing a kit token repaints a drafting piece and touches no document
-//   2. an off-kit raw colour is a check_brand error naming the layer
+//   2. an off-kit raw color is a check_brand error naming the layer
 //   3. quality findings are labelled advisory and never block
 
 import test from "node:test";
@@ -20,6 +20,9 @@ process.env.DATABASE_PATH = path.join(tmpDir, "test.db");
 process.env.SECRETS_MASTER_KEY = randomBytes(32).toString("base64");
 
 import express from "express";
+import { createSession, hashRecoveryCode, SESSION_COOKIE } from "../server/auth";
+import { brandKitRouter } from "../server/brand-kit-routes";
+import { pieceRouter } from "../server/piece-routes";
 import {
   BrandKitError,
   currentKit,
@@ -68,8 +71,45 @@ const router = createProjectDomainRouter({
 
 const app = express();
 app.use("/keepanalog", router);
+// The two Operator surfaces Studio reads, mounted exactly as main.ts mounts
+// them, so the Studio wiring is exercised and not only the modules under it.
+app.use("/api/pieces", pieceRouter());
+app.use("/api/brand-kits", brandKitRouter());
 const server = app.listen(0);
 const port = (server.address() as AddressInfo).port;
+
+// An Operator session, so the authenticated Studio routes can be called.
+let cookie = "";
+
+function operatorCookie(): string {
+  const salt = randomBytes(16).toString("hex");
+  const inserted = getDb()
+    .prepare(
+      "INSERT INTO operators (handle, recovery_code_hash, recovery_code_salt) VALUES (?, ?, ?)"
+    )
+    .run("operator", hashRecoveryCode("AAAAA-AAAAA-AAAAA-AAAAA", salt), salt);
+  const { token } = createSession(Number(inserted.lastInsertRowid));
+  return `${SESSION_COOKIE}=${token}`;
+}
+
+interface JsonResponse<T> {
+  status: number;
+  body: T;
+}
+
+async function get<T>(pathname: string): Promise<JsonResponse<T>> {
+  const res = await fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { cookie } });
+  return { status: res.status, body: (await res.json()) as T };
+}
+
+async function put<T>(pathname: string, payload: unknown): Promise<JsonResponse<T>> {
+  const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+    method: "PUT",
+    headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, body: (await res.json()) as T };
+}
 
 const SESSION = "brand-kit-session";
 let projectId = 0;
@@ -120,6 +160,7 @@ test.before(async () => {
   assert.equal(registered.project.status, "healthy");
   projectId = registered.project.id;
   assert.equal((await selectProject(SESSION, "KeepAnalog")).ok, true);
+  cookie = operatorCookie();
 });
 
 test.after(() => {
@@ -176,7 +217,7 @@ test("invalid tokens are refused and the kit is unchanged", () => {
     (err: unknown) => err instanceof BrandKitError && /#rrggbb/.test(err.detail.join(" "))
   );
   assert.throws(
-    () => updateKit(projectId, { tokens: { "colour.accent": "#112233" } }),
+    () => updateKit(projectId, { tokens: { "color.accent": "#112233" } }),
     (err: unknown) => err instanceof BrandKitError && /not a Brand Kit token/.test(err.detail.join(" "))
   );
   assert.throws(() => updateKit(projectId, { tokens: {} }), BrandKitError);
@@ -194,9 +235,12 @@ test("invalid tokens are refused and the kit is unchanged", () => {
 
 test("changing a kit token repaints a drafting piece without touching its stored document", () => {
   const id = makePiece("repaint me");
+  // The drafting transition arrives with the approval gate (ticket 13); the
+  // repaint rule is about the status, so set it directly to test it here.
+  getDb().prepare("UPDATE pieces SET status = 'drafting' WHERE id = ?").run(id);
   const before = getPieceById(id);
   assert.ok(before);
-  assert.equal(before.status, "backlog");
+  assert.equal(before.status, "drafting");
 
   const beforeHtml = previewHtml(id);
   const kitBefore = currentKit(projectId);
@@ -226,10 +270,10 @@ test("changing a kit token repaints a drafting piece without touching its stored
 });
 
 // ---------------------------------------------------------------------------
-// Criterion 2: an off-kit raw colour is an error naming the layer
+// Criterion 2: an off-kit raw color is an error naming the layer
 
-test("an off-kit raw colour yields a check_brand error naming the layer", () => {
-  const id = makePiece("off-kit colour");
+test("an off-kit raw color yields a check_brand error naming the layer", () => {
+  const id = makePiece("off-kit color");
   const applied = applyEditBatch(SESSION, {
     id,
     baseVersion: 1,
@@ -431,4 +475,157 @@ test("Studio reads both reports for one piece in a single call", () => {
   assert.equal(reports.brand.kitVersion, currentKit(projectId).version);
   assert.equal(reports.quality.advisory, true);
   assert.equal(reportsForPiece(424242), null);
+});
+
+// ---------------------------------------------------------------------------
+// Repair path, removal, and stacked overflow
+
+test("set_fill puts an off-kit text color back on the kit, and set_font its family", () => {
+  const id = makePiece(
+    "repairable",
+    doc({
+      slides: [{ layers: [{ type: "text", text: "Headline", role: "headline", color: "#ff00aa", font: "Comic Sans MS" }] }],
+    })
+  );
+  const before = checkBrand(SESSION, { id }).response.check as { errors: CheckFinding[] };
+  assert.deepEqual(before.errors.map((f) => f.code).sort(), ["off_kit_color", "off_kit_font"]);
+
+  const repaired = applyEditBatch(SESSION, {
+    id,
+    baseVersion: 1,
+    ops: [
+      { op: "set_fill", slide: 0, layer: 0, value: "brand.accent" },
+      { op: "set_font", slide: 0, layer: 0, value: "font.display" },
+    ],
+  });
+  assert.equal(repaired.ok, true);
+  assert.deepEqual(repaired.response.warnings, []);
+
+  const after = checkBrand(SESSION, { id }).response.check as { errors: CheckFinding[] };
+  assert.deepEqual(after.errors, []);
+
+  // An unpaintable value still falls back with a warning rather than failing.
+  const nonsense = applyEditBatch(SESSION, {
+    id,
+    baseVersion: 2,
+    ops: [{ op: "set_font", slide: 0, layer: 0, value: "!!!" }],
+  });
+  assert.equal(nonsense.ok, true);
+  assert.match((nonsense.response.warnings as string[])[0], /fell back/);
+});
+
+test("a token added by mistake can be removed, but a required one cannot", () => {
+  const added = updateKit(projectId, { tokens: { "brand.typo": "#010101" } });
+  assert.ok("brand.typo" in added.tokens);
+
+  const removed = updateKit(projectId, { tokens: { "brand.typo": null } });
+  assert.equal(removed.version, added.version + 1);
+  assert.ok(!("brand.typo" in removed.tokens));
+
+  assert.throws(
+    () => updateKit(projectId, { tokens: { "brand.ink": null } }),
+    (err: unknown) => err instanceof BrandKitError && /"brand.ink" is required/.test(err.detail.join(" "))
+  );
+  assert.ok("brand.ink" in currentKit(projectId).tokens);
+});
+
+test("unframed layers overflow together, because that is how they are laid out", () => {
+  const tokens = currentKit(projectId).tokens;
+  const paragraph = "A long line of body copy that keeps going and going. ".repeat(6);
+
+  // Each of these alone fits the canvas; stacked, they do not. Measuring one
+  // layer at a time against the whole canvas would report nothing.
+  const stacked = checkBrandDoc(
+    doc({
+      slides: [
+        {
+          layers: [
+            { type: "text", text: paragraph },
+            { type: "text", text: paragraph },
+            { type: "text", text: paragraph },
+            { type: "image", ref: "asset://hero" },
+          ],
+        },
+      ],
+    }),
+    tokens
+  );
+  assert.deepEqual(stacked.map((f) => f.code), ["slide_overflow"]);
+  assert.equal(stacked[0].severity, "warning");
+  assert.equal(stacked[0].slide, 1);
+  assert.equal(stacked[0].layer, null);
+
+  const fits = checkBrandDoc(
+    doc({ slides: [{ layers: [{ type: "text", text: "Short", role: "headline" }] }] }),
+    tokens
+  );
+  assert.deepEqual(fits, []);
+});
+
+// ---------------------------------------------------------------------------
+// The Operator surfaces Studio reads
+
+test("Studio reads a piece's checks and its project's kit over HTTP", async () => {
+  const id = makePiece("studio surfaces");
+
+  const checks = await get<{
+    brand: { kitVersion: number };
+    quality: { advisory: boolean };
+  }>(`/api/pieces/${id}/checks`);
+  assert.equal(checks.status, 200);
+  assert.equal(checks.body.brand.kitVersion, currentKit(projectId).version);
+  assert.equal(checks.body.quality.advisory, true);
+
+  // Every piece in the list carries the kit it renders through, so Studio can
+  // paint it without a second round trip.
+  const list = await get<{ pieces: { id: number; kit: { version: number } }[] }>("/api/pieces");
+  assert.equal(list.status, 200);
+  const listed = list.body.pieces.find((p) => p.id === id);
+  assert.equal(listed?.kit.version, currentKit(projectId).version);
+
+  const kit = await get<{
+    projectName: string;
+    kit: { version: number };
+    versions: unknown[];
+  }>(`/api/brand-kits/${projectId}`);
+  assert.equal(kit.status, 200);
+  assert.equal(kit.body.projectName, "KeepAnalog");
+  assert.equal(kit.body.versions.length, kit.body.kit.version);
+
+  assert.equal((await get<unknown>("/api/pieces/424242/checks")).status, 404);
+  assert.equal((await get<unknown>("/api/brand-kits/424242")).status, 404);
+});
+
+test("the Operator changes a token over HTTP and the piece repaints, unedited", async () => {
+  const id = makePiece("http repaint");
+  const before = getPieceById(id);
+  assert.ok(before);
+  const beforeHtml = previewHtml(id);
+
+  const saved = await put<{ kit: { tokens: Record<string, string> } }>(
+    `/api/brand-kits/${projectId}`,
+    { tokens: { "brand.accent": "#123456" } }
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.kit.tokens["brand.accent"], "#123456");
+
+  assert.notEqual(previewHtml(id)[0], beforeHtml[0]);
+  assert.deepEqual(getPieceById(id)?.doc, before.doc);
+  assert.equal(getPieceById(id)?.docVersion, before.docVersion);
+
+  const rejected = await put<{ detail: string[] }>(`/api/brand-kits/${projectId}`, {
+    tokens: { "brand.accent": "not a color" },
+  });
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.detail.join(" "), /#rrggbb/);
+  assert.equal(currentKit(projectId).tokens["brand.accent"], "#123456");
+
+  await put<unknown>(`/api/brand-kits/${projectId}`, {
+    tokens: { "brand.accent": DEFAULT_BRAND_TOKENS["brand.accent"] },
+  });
+});
+
+test("the Studio routes refuse an unauthenticated caller", async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/brand-kits/${projectId}`);
+  assert.equal(res.status, 401);
 });
