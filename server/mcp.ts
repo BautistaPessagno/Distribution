@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { listSlots, slotView } from "./accounts";
 import { currentKit } from "./brand-kit";
 import { checkBrand, checkQuality } from "./checks";
 import {
@@ -237,6 +238,22 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number(), title: z.string() },
     },
     async ({ id, title }) => lintedJson(instantiateTemplate(sessionKey, { id, title }).response)
+  );
+  server.registerTool(
+    "marketingos.list_account_slots",
+    {
+      description:
+        "List the Account Slots of the selected Connected Project: platform, identity spec, niche keywords, disclosure rules, daily caps, allowed windows, lifecycle state, and the readiness checklist of the instance filling each. Read-only. MarketingOS never creates a platform identity and never performs a platform action; the Operator does both by hand.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        slots: listSlots(pinned.projectId).map(slotView),
+      });
+    }
   );
   server.registerTool(
     "marketingos.get_brand_kit",

@@ -14,6 +14,7 @@ export const ONBOARD_GUIDE = {
     "Writes use the two-phase Project Change Set protocol: prepare, Operator approval, apply. Approvals are digest-keyed and never transit the host.",
     "Approved-claims-only citation. [NEED] tokens block approval. Heuristic scores self-label.",
     "MarketingOS never generates images. Every asset records its origin, prompt lineage, and rights notes, or it is refused.",
+    "MarketingOS never creates a platform account and never performs a platform action. Account readiness is an explicit evidenced checklist, never elapsed time, and daily caps are our judgment calls rather than platform-sanctioned volumes.",
     "No secret material ever appears in MCP responses, method text, Work Orders, proofs, or logs.",
   ],
   tools: {
@@ -42,6 +43,8 @@ export const ONBOARD_GUIDE = {
     "marketingos.instantiate_template":
       "Start a new backlog piece from a Creative Template, bound to this session's pinned snapshot.",
     "marketingos.record_outcome": "Record what an exported piece did, moving it to measured.",
+    "marketingos.list_account_slots":
+      "Read the selected project's Account Slots, their caps and windows, and the readiness checklist of the instance in each. Read-only: MarketingOS never creates an identity or performs a platform action.",
     "marketingos.get_brand_kit":
       "Read the selected project's Brand Kit: the versioned token table pieces reference. Pieces hold token names, never copied values.",
     "marketingos.check_brand":

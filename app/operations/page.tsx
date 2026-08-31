@@ -1,5 +1,6 @@
 "use client";
 
+import { SlotCard, useSlots } from "../account-slots";
 import { ChangeCard, pendingOf, useApprovals } from "../approvals";
 import { EmptyState, Shell } from "../shell";
 
@@ -10,6 +11,7 @@ import { EmptyState, Shell } from "../shell";
 
 export default function OperationsPage() {
   const { changes, error, reload } = useApprovals();
+  const slots = useSlots();
   const pending = pendingOf(changes);
   const decided = (changes ?? []).filter((c) => c.status !== "pending");
 
@@ -53,6 +55,28 @@ export default function OperationsPage() {
               ))}
             </ul>
           </>
+        )}
+
+        <hr className="hairline" />
+        <h2 className="headline" style={{ fontSize: "1.1rem" }}>
+          Account Slots
+        </h2>
+        <p className="body-text">
+          A slot is durable channel capacity for a Connected Project. The account filling
+          it is replaceable; losing one archives it read-only with its history and the slot
+          survives. MarketingOS never creates an account and never performs a platform
+          action — every one of these is your own hand.
+        </p>
+        {slots.error && <p className="error-text">{slots.error}</p>}
+        {slots.slots !== null && slots.slots.length === 0 && (
+          <p className="body-text">No Account Slots yet.</p>
+        )}
+        {slots.slots !== null && slots.slots.length > 0 && (
+          <ul className="connection-list">
+            {slots.slots.map((slot) => (
+              <SlotCard key={slot.id} slot={slot} onChanged={slots.reload} />
+            ))}
+          </ul>
         )}
 
         <hr className="hairline" />
