@@ -15,9 +15,10 @@ export const ONBOARD_GUIDE = {
   ],
   tools: {
     "marketingos.onboard": "This guide: contract version, rules, tool map, example goals.",
-    "marketingos.select_project": "Pin the session to one Connected Project Snapshot. (planned)",
+    "marketingos.select_project": "Pin the session to one Connected Project Snapshot.",
     "marketingos.get_method": "Route a marketing goal to a Method Library entry. (planned)",
-    "project.*": "Versioned, provenance-aware Connected Project context. (planned)",
+    "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
+    "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },
   exampleGoals: [
     "Draft a positioning hypothesis for KeepAnalog from its Project Context.",
