@@ -9,6 +9,7 @@ import {
   selectProject,
   sessionContext,
 } from "./gateway";
+import { getMethod } from "./methods";
 import { ONBOARD_GUIDE } from "./onboard";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
 import { log } from "./log";
@@ -52,6 +53,15 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { project: z.string() },
     },
     async ({ project }) => lintedJson((await selectProject(sessionKey, project)).response)
+  );
+  server.registerTool(
+    "marketingos.get_method",
+    {
+      description:
+        "Route a marketing goal to its Method Library entry: steps, rubric, and output schema. Chained goals return a persisted MarketingRunPlan; unknown goals return closest-goal suggestions.",
+      inputSchema: { goal: z.string() },
+    },
+    async ({ goal }) => lintedJson(getMethod(sessionKey, goal).response)
   );
   server.registerTool(
     "project.get_snapshot",
