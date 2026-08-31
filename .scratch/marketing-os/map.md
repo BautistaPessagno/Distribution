@@ -1,7 +1,7 @@
 # Find the MarketingOS MVP
 
 Type: wayfinder:map
-Status: active
+Status: complete
 
 ## Destination
 
@@ -43,15 +43,17 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Define authentication, authorization, and secrets design](issues/18-define-auth-and-secrets.md): MCP-spec OAuth for hosts, a single passkey Operator account, per-project service tokens, and one encrypted secrets store with reference-only usage and lint-checked responses.
 - [Research platform policies for warm-up actions](issues/19-research-platform-policies-for-warmup.md): manual genuine engagement is permitted on all four platforms, the same failure modes are banned everywhere, disclosure is platform-level on three, and only X publishes numeric limits, so non-X caps ship as labeled judgment calls.
 - [Prototype the dashboard information architecture](issues/14-prototype-dashboard-information-architecture.md): a guided single-step rail showing only the current step, setup-only onboarding that never writes to a project, approvals as explicit interruptions outside the rail, and the minimalist-ui visual language.
+- [Choose the MVP technical architecture](issues/15-choose-mvp-technical-architecture.md): one TypeScript monolith on one small hosted service, SQLite with streamed backups, shared editor/renderer components for preview-equals-export, an in-process job runner, and libsodium-sealed secrets.
+- [Define the dogfood rollout](issues/16-define-dogfood-rollout.md): KeepAnalog validates first on a strictly project-agnostic build; one full loop with every gate exercised, a kept week-four habit, and zero-code onboarding of the second project prove the MVP.
+- [Assemble the implementation-ready MVP specification](issues/17-assemble-implementation-ready-spec.md): the destination, compiled as [spec.md](spec.md) with no remaining prerequisite decisions.
 
 ## Not yet specified
 
-- Hosting, deployment, and recovery requirements after the technical architecture is selected.
-- Exact SEO, search-console, answer-engine, social, and product-metric ingestion after the measurement model identifies required observations.
-- Licensing and attribution mechanics if Marketing AGI text or rubrics are copied rather than cleanly reimplemented.
+Empty. The way to the destination is clear: hosting and recovery landed in the architecture decision, MVP measurement needs no SEO or platform ingestion (post-MVP work is out of scope below), and licensing mechanics are fixed in the spec's attribution section.
 
 ## Out of scope
 
+- SEO, search-console, and answer-engine ingestion (no MVP capability produces those observations; returns with a post-MVP effort if the destination is redrawn).
 - Runtime integrations with HumanPost, Marketing AGI, The Agentcy, or Maxfusion.
 - Additional model APIs, creative-vendor subscriptions, stock-media services, and specialized video-generation services.
 - Video generation or editing.
