@@ -21,7 +21,7 @@
 import { z } from "zod";
 import { audit } from "./audit";
 import { currentKit } from "./brand-kit";
-import { brandReport, qualityReport, type CheckFinding } from "./checks";
+import { brandReport, qualityReport, refResolverFor, type CheckFinding } from "./checks";
 import { getDb } from "./db";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
@@ -128,7 +128,8 @@ export function isBlocked(blockers: ApprovalBlockers): boolean {
 export function approvalBlockers(piece: PieceRecord): ApprovalBlockers {
   const kit = currentKit(piece.projectId);
   return {
-    brandErrors: brandReport(piece.doc, piece.docVersion, kit).errors,
+    brandErrors: brandReport(piece.doc, piece.docVersion, kit, refResolverFor(piece.projectId))
+      .errors,
     needTokens: needTokens(piece.doc),
   };
 }

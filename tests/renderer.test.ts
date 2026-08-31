@@ -19,6 +19,7 @@ process.env.SECRETS_MASTER_KEY = randomBytes(32).toString("base64");
 process.env.EXPORTS_PATH = path.join(tmpDir, "exports");
 
 import express from "express";
+import { registerAsset } from "../server/assets";
 import { selectProject } from "../server/gateway";
 import { applyEditBatch } from "../server/piece-edits";
 import {
@@ -69,6 +70,12 @@ const port = (server.address() as AddressInfo).port;
 
 const SESSION = "renderer-session";
 
+// Image layers reference registered assets by their stable id (ticket 16),
+// so the fixture registers one rather than inventing a reference that
+// resolves to nothing — an unresolvable one is a brand error and would
+// block the approval this piece needs to reach planned.
+let heroRef = "";
+
 function doc(): PieceDoc {
   return {
     format: "1:1",
@@ -82,7 +89,7 @@ function doc(): PieceDoc {
       },
       {
         layers: [
-          { type: "image", ref: "asset://hero", alt: "A film camera" },
+          { type: "image", ref: heroRef, alt: "A film camera" },
           { type: "text", text: "Second slide" },
         ],
       },
@@ -116,6 +123,17 @@ test.before(async () => {
   const a = await registerProject("KeepAnalog", `http://127.0.0.1:${port}/keepanalog`, "test");
   assert.equal(a.project.status, "healthy");
   assert.equal((await selectProject(SESSION, "KeepAnalog")).ok, true);
+
+  const hero = Buffer.alloc(2048, 0x42);
+  Buffer.from("89504e470d0a1a0a", "hex").copy(hero, 0);
+  const registered = registerAsset(SESSION, {
+    origin: "ai_host",
+    prompt: "A film camera on a desk",
+    rights: "generated for this project",
+    bytesBase64: hero.toString("base64"),
+  });
+  assert.equal(registered.ok, true, JSON.stringify(registered.response));
+  heroRef = (registered.response.asset as { ref: string }).ref;
 });
 
 test.after(async () => {

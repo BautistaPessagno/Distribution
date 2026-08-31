@@ -14,6 +14,7 @@ import { getHealth } from "./health";
 import { startJobRunner } from "./jobs";
 import { log, newRequestId } from "./log";
 import { handleMcpRequest } from "./mcp";
+import { assetRouter } from "./asset-routes";
 import { brandKitRouter } from "./brand-kit-routes";
 import { pieceRouter } from "./piece-routes";
 import { projectRouter } from "./project-routes";
@@ -88,6 +89,7 @@ async function main(): Promise<void> {
   server.use("/api/pieces", pieceRouter());
   server.use("/api/brand-kits", brandKitRouter());
   server.use("/api/templates", templateRouter());
+  server.use("/api/assets", assetRouter());
 
   // Dev stub Connected Project: a conformant project domain served by this
   // process so registration is testable before any real project exists.

@@ -15,6 +15,7 @@
 // Both are pure functions of (document, kit): same input, same findings.
 
 import { z } from "zod";
+import { resolveAssetRef } from "./assets";
 import { currentKit, type BrandKit } from "./brand-kit";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
@@ -182,7 +183,23 @@ function overflowFindings(slide: { layers: RenderLayer[] }, format: string, slid
   return findings;
 }
 
-export function checkBrandDoc(doc: PieceDoc, tokens: BrandTokens): CheckFinding[] {
+/**
+ * Whether an image layer's reference points at something. Passing a
+ * resolver is optional: without one, only an empty ref is an error, because
+ * nothing here can tell whether a reference resolves.
+ */
+export type RefResolver = (ref: string) => boolean;
+
+/** An image layer may only point at an asset registered to its own project. */
+export function refResolverFor(projectId: number): RefResolver {
+  return (ref) => resolveAssetRef(ref, projectId) !== null;
+}
+
+export function checkBrandDoc(
+  doc: PieceDoc,
+  tokens: BrandTokens,
+  refExists?: RefResolver
+): CheckFinding[] {
   const findings: CheckFinding[] = [];
   doc.slides.forEach((slide, slideIndex) => {
     const layers = slide.layers as RenderLayer[];
@@ -198,10 +215,22 @@ export function checkBrandDoc(doc: PieceDoc, tokens: BrandTokens): CheckFinding[
           finding("empty_text", "error", location, `${location.where} is an empty text layer.`)
         );
       }
-      if (layer.type === "image" && (layer.ref ?? "").trim() === "") {
-        findings.push(
-          finding("missing_asset", "error", location, `${location.where} names no asset.`)
-        );
+      if (layer.type === "image") {
+        const ref = (layer.ref ?? "").trim();
+        if (ref === "") {
+          findings.push(
+            finding("missing_asset", "error", location, `${location.where} names no asset.`)
+          );
+        } else if (refExists && !refExists(ref)) {
+          findings.push(
+            finding(
+              "missing_asset",
+              "error",
+              location,
+              `${location.where} references ${ref}, which is not a registered asset of this project.`
+            )
+          );
+        }
       }
     });
     findings.push(...overflowFindings({ layers }, doc.format, slideIndex));
@@ -254,8 +283,13 @@ export function checkQualityDoc(doc: PieceDoc): CheckFinding[] {
   return findings;
 }
 
-export function brandReport(doc: PieceDoc, docVersion: number, kit: BrandKit): BrandCheckReport {
-  const findings = checkBrandDoc(doc, kit.tokens);
+export function brandReport(
+  doc: PieceDoc,
+  docVersion: number,
+  kit: BrandKit,
+  refExists?: RefResolver
+): BrandCheckReport {
+  const findings = checkBrandDoc(doc, kit.tokens, refExists);
   return {
     kitVersion: kit.version,
     docVersion,
@@ -276,7 +310,7 @@ export function reportsForPiece(
   if (!piece) return null;
   const kit = currentKit(piece.projectId);
   return {
-    brand: brandReport(piece.doc, piece.docVersion, kit),
+    brand: brandReport(piece.doc, piece.docVersion, kit, refResolverFor(piece.projectId)),
     quality: qualityReport(piece.doc, piece.docVersion),
   };
 }
@@ -305,7 +339,12 @@ export function checkBrand(sessionKey: string, input: unknown): GatewayResult {
   if ("error" in scoped) return scoped.error;
   const { piece } = scoped;
 
-  const report = brandReport(piece.doc, piece.docVersion, currentKit(piece.projectId));
+  const report = brandReport(
+    piece.doc,
+    piece.docVersion,
+    currentKit(piece.projectId),
+    refResolverFor(piece.projectId)
+  );
   return {
     ok: true,
     response: {

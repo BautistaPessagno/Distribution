@@ -6,6 +6,7 @@ import {
   TemplateList,
   type CreativeTemplateRow,
 } from "../creative-templates";
+import { ImageHandoff, imageStateLabel } from "../image-handoff";
 import { PieceMoves } from "../piece-moves";
 import { EmptyState, Shell } from "../shell";
 import {
@@ -74,6 +75,7 @@ interface Piece {
   brandOutdated: boolean;
   plannedDate: string | null;
   outcome: string | null;
+  imageState: string | null;
   createdAt: string;
   kit: BrandKit;
   /** The Operator moves this piece can take right now, decided server-side. */
@@ -414,7 +416,10 @@ export default function StudioPage() {
                   <strong>{p.title}</strong> <span className="tag">{p.status}</span>{" "}
                   <span className="tag">{p.doc.format}</span>{" "}
                   <span className="tag">{p.projectName}</span>{" "}
-                  {p.brandOutdated && <span className="tag tag-warn">brand-outdated</span>}
+                  {p.brandOutdated && <span className="tag tag-warn">brand-outdated</span>}{" "}
+                  {p.imageState === "prompt_prepared" && (
+                    <span className="tag tag-warn">prompt prepared</span>
+                  )}
                   <div className="body-text">
                     {p.doc.slides.length} slide{p.doc.slides.length === 1 ? "" : "s"} · doc v
                     {p.docVersion} · kit v{p.kit.version}
@@ -445,6 +450,7 @@ export default function StudioPage() {
                           ))}
                         </ul>
                       </div>
+                      <ImageHandoff piece={p} onUploaded={kitChanged} />
                       <LifecyclePanel piece={p} checks={checks} onMoved={kitChanged} />
                       <ChecksPanel checks={checks} />
                       <BrandKitPanel kit={p.kit} onChanged={kitChanged} />

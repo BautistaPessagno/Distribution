@@ -13,6 +13,7 @@ export const ONBOARD_GUIDE = {
     "Context Gaps are explicit states, never silent omissions. Surface them to the Operator.",
     "Writes use the two-phase Project Change Set protocol: prepare, Operator approval, apply. Approvals are digest-keyed and never transit the host.",
     "Approved-claims-only citation. [NEED] tokens block approval. Heuristic scores self-label.",
+    "MarketingOS never generates images. Every asset records its origin, prompt lineage, and rights notes, or it is refused.",
     "No secret material ever appears in MCP responses, method text, Work Orders, proofs, or logs.",
   ],
   tools: {
@@ -31,6 +32,10 @@ export const ONBOARD_GUIDE = {
       "What stands between a piece and approval: brand errors and [NEED: ...] tokens block; quality findings never do.",
     "marketingos.reopen_piece":
       "Reopen a piece in review, approved, or planned back to drafting. Approval and the planned date are cleared.",
+    "marketingos.register_asset":
+      "Return a generated image as inline base64 with origin, prompt, lineage, and rights notes. Missing metadata fails with rights_missing; no payload or an oversized one drops the piece to 'prompt prepared' for manual upload.",
+    "marketingos.list_assets":
+      "List the selected project's registered assets. Image layers reference them by stable asset:// id.",
     "marketingos.save_as_template":
       "Save a piece's layout as a Creative Template: structure and token references kept, campaign content stripped.",
     "marketingos.list_templates": "List the selected project's Creative Templates.",
