@@ -222,12 +222,17 @@ export function checkBrandDoc(
             finding("missing_asset", "error", location, `${location.where} names no asset.`)
           );
         } else if (refExists && !refExists(ref)) {
+          // A warning, not an error. Ticket 12 scoped the missing_asset
+          // *error* to a layer that names nothing at all, and a Creative
+          // Template deliberately keeps its refs — so blocking approval
+          // here would make every template-started piece unapprovable. The
+          // Operator is told; the gate stays where it was.
           findings.push(
             finding(
-              "missing_asset",
-              "error",
+              "unresolved_asset",
+              "warning",
               location,
-              `${location.where} references ${ref}, which is not a registered asset of this project.`
+              `${location.where} references ${ref}, which is not a registered asset of this project; it renders as a placeholder.`
             )
           );
         }

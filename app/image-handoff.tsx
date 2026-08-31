@@ -15,6 +15,7 @@ export interface HandoffPiece {
   imageState: string | null;
 }
 
+// Kept in step with attachedState() in server/assets.ts.
 const ATTACHED = "asset_attached:";
 
 export function imageStateLabel(state: string | null): { text: string; tag: string } | null {

@@ -4,10 +4,10 @@ import { sessionTokenFrom } from "./auth-routes";
 import {
   assetBytes,
   assetSummary,
+  attachedState,
   AssetError,
   getAssetById,
   listAllAssets,
-  MAX_ASSET_BYTES,
   uploadAsset,
 } from "./assets";
 import { log } from "./log";
@@ -17,10 +17,10 @@ import { listProjects } from "./projects";
 // image handoff falls back to when a host cannot send binary payloads or
 // the file is over the inline cap.
 export function assetRouter(): Router {
-  // Base64 in JSON is roughly 4/3 the size of the bytes; the body limit
-  // leaves room for that plus the metadata around it.
   const router = express.Router();
-  router.use(express.json({ limit: `${Math.ceil((MAX_ASSET_BYTES * 4) / 3 / 1024 / 1024) + 1}mb` }));
+  // Base64 is 4/3 the size of the bytes, so a 2MB image needs ~2.7MB of
+  // body, plus the metadata around it.
+  router.use(express.json({ limit: "4mb" }));
 
   router.use((req: Request, res: Response, next) => {
     if (validateSession(sessionTokenFrom(req)) === null) {
@@ -54,7 +54,13 @@ export function assetRouter(): Router {
       res.status(404).json({ error: `No asset #${id}` });
       return;
     }
+    // These bytes arrived from an AI Host and are served back from the
+    // dashboard's own origin under the Operator's session. The media type is
+    // this process's own sniff, never the caller's claim, and nosniff stops
+    // a browser from second-guessing it into something executable.
     res.setHeader("Content-Type", asset.mediaType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
     // Assets are immutable, so this is safe to hold onto.
     res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
     res.send(bytes);
@@ -88,7 +94,7 @@ export function assetRouter(): Router {
 
       res.json({
         asset: assetSummary(asset),
-        piece: piece ? { id: piece.id, imageState: `asset_attached:${asset.ref}` } : null,
+        piece: piece ? { id: piece.id, imageState: attachedState(asset.ref) } : null,
         note: piece
           ? `Uploaded ${asset.ref} through the dashboard; lineage recorded from the prepared prompt, and the piece is no longer waiting on an image.`
           : `Uploaded ${asset.ref} through the dashboard.`,

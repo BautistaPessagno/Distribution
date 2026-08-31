@@ -22,7 +22,13 @@ import { chromium, type Browser } from "playwright";
 import { z } from "zod";
 import { audit } from "./audit";
 import { getDb } from "./db";
-import { assetBytes, resolveAssetRef } from "./assets";
+import {
+  assetBytes,
+  assetBytesPath,
+  assetIdFromBytesPath,
+  getAssetById,
+  resolveAssetRef,
+} from "./assets";
 import { currentKit, kitAtVersion, type BrandKit } from "./brand-kit";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
@@ -67,9 +73,12 @@ export function renderSlideHtml(
 }
 
 /**
- * Registered assets render as themselves, inline. Both the preview and the
- * export screenshot go through this same resolver, so an image layer looks
- * the same in both — the ticket 11 invariant holds with pixels in it.
+ * Registered assets render as themselves. The markup carries the asset's
+ * URL, not its bytes: the dashboard fetches it over the authenticated
+ * route, and the export fulfils it from the database inside Chromium (see
+ * `renderPng`). So the preview and the export screenshot are byte-identical
+ * HTML — ticket 11's invariant holds with real pixels in it — while an MCP
+ * response stays a few hundred bytes per image instead of a few megabytes.
  */
 export function assetResolverFor(projectId: number): AssetResolver {
   const cache = new Map<string, string | null>();
@@ -77,9 +86,7 @@ export function assetResolverFor(projectId: number): AssetResolver {
     const hit = cache.get(ref);
     if (hit !== undefined) return hit;
     const asset = resolveAssetRef(ref, projectId);
-    const src = asset
-      ? `data:${asset.mediaType};base64,${(assetBytes(asset.id) ?? Buffer.alloc(0)).toString("base64")}`
-      : null;
+    const src = asset ? assetBytesPath(asset.id) : null;
     cache.set(ref, src);
     return src;
   };
@@ -206,6 +213,25 @@ async function renderPng(
   const browser = await getBrowser();
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
   try {
+    // The markup points image layers at the asset route. No server is
+    // running for this render, so the bytes are served straight out of the
+    // database into the page. Nothing else is allowed out: an export must
+    // not depend on, or reach, the network.
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      const id = assetIdFromBytesPath(url.pathname);
+      if (id === null) {
+        await route.abort();
+        return;
+      }
+      const asset = getAssetById(id);
+      const bytes = asset ? assetBytes(id) : null;
+      if (!asset || !bytes) {
+        await route.abort();
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: asset.mediaType, body: bytes });
+    });
     await page.setContent(renderSlideHtml(doc, slideIndex, tokens, resolveAsset), {
       waitUntil: "load",
     });

@@ -23,11 +23,13 @@ import { createSession, hashRecoveryCode, SESSION_COOKIE } from "../server/auth"
 import { getDb } from "../server/db";
 import { selectProject } from "../server/gateway";
 import {
+  approvalBlockers,
   approvePiece,
   planPiece,
   startDrafting,
   submitForReview,
 } from "../server/piece-lifecycle";
+import { applyEditBatch } from "../server/piece-edits";
 import { pieceRouter } from "../server/piece-routes";
 import { templateRouter } from "../server/template-routes";
 import { createPiece, getPieceById, type PieceDoc, type PieceRecord } from "../server/pieces";
@@ -432,4 +434,47 @@ test("an approved piece can be templated without disturbing its approval", () =>
   assert.equal(after.pinnedKitVersion, before.pinnedKitVersion);
   assert.equal(after.plannedDate, before.plannedDate);
   assert.equal(after.docVersion, before.docVersion);
+});
+
+test("a piece started from a template is still approvable, dangling image refs and all", () => {
+  // A Creative Template keeps its image refs, and a fresh piece may sit
+  // opposite an asset that was never re-registered for it. That is a
+  // warning to show the Operator, not a gate: blocking approval here would
+  // make every template-started piece with an image permanently stuck.
+  const doc: PieceDoc = {
+    format: "1:1",
+    slides: [
+      {
+        layers: [
+          { type: "text", text: "Slow tools, on purpose", role: "headline" },
+          { type: "image", ref: "asset://424242" },
+        ],
+      },
+    ],
+    captions: { instagram: "ig", x: "x", linkedin: "li", tiktok: "tt" },
+  };
+  const source = makePiece(SESSION, "template with an image", doc);
+  const template = saveTemplate(source.id, "Image layout");
+
+  const started = instantiateTemplate(SESSION, { id: template.id, title: "from the layout" });
+  assert.equal(started.ok, true);
+  const pieceId = (started.response.piece as { id: number }).id;
+
+  // Its copy is empty, so it is not approvable yet for that reason...
+  const blockers = approvalBlockers(reload(pieceId));
+  assert.deepEqual(blockers.brandErrors.map((f) => f.code), ["empty_text"]);
+  // ...but the unresolved image is a warning, not one of them.
+  assert.ok(!blockers.brandErrors.some((f) => f.code === "unresolved_asset"));
+
+  const filled = applyEditBatch(SESSION, {
+    id: pieceId,
+    baseVersion: 1,
+    ops: [{ op: "set_text", slide: 0, layer: 0, value: "Fresh copy" }],
+  });
+  assert.equal(filled.ok, true);
+
+  assert.equal(startDrafting(SESSION, { id: pieceId }).ok, true);
+  assert.equal(submitForReview(SESSION, { id: pieceId }).ok, true);
+  const approved = approvePiece(reload(pieceId), "operator");
+  assert.equal(approved.ok, true, JSON.stringify(approved.response));
 });

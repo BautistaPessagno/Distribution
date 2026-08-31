@@ -46,6 +46,7 @@ import {
   type ResourceEnvelope,
 } from "../server/project-domain-sdk";
 import { isActiveProjectTokenHash, registerProject } from "../server/projects";
+import { findSecretShapedStrings } from "../server/response-lint";
 import { assetResolverFor, renderPreview } from "../server/renderer";
 import { stubVerifyAgainstProjects } from "../server/stub-project";
 
@@ -245,7 +246,10 @@ test("outcome 4 of 4: a registration with no origin fails with rights_missing", 
   const noOrigin = registerAsset(SESSION, { bytesBase64: base64(png(100 * 1024)) });
   assert.equal(noOrigin.ok, false);
   assert.equal(noOrigin.response.error, "rights_missing");
-  assert.match(String(noOrigin.response.message), /origin is required/);
+  assert.equal(
+    noOrigin.response.message,
+    "origin is required (ai_host, operator_upload, or project_import)."
+  );
   assert.match(String(noOrigin.response.next), /Resend with origin/);
 
   // An origin nobody recognises is no origin at all.
@@ -426,14 +430,22 @@ test("an image layer references a registered asset by its stable id", () => {
   );
 
   // ...and calls out one that does not, naming the layer and the reference.
+  // As a warning: a Creative Template keeps its refs, so an unresolved one
+  // must not make a template-started piece unapprovable.
   const dangling = checkBrandDoc(
     doc("asset://424242"),
     currentKit(projectId).tokens,
     refResolverFor(projectId)
   );
-  assert.deepEqual(dangling.map((f) => f.code), ["missing_asset"]);
+  assert.deepEqual(dangling.map((f) => f.code), ["unresolved_asset"]);
+  assert.equal(dangling[0].severity, "warning");
   assert.equal(dangling[0].where, "slide 1, layer 1 (image)");
   assert.match(dangling[0].message, /asset:\/\/424242/);
+
+  // A layer naming nothing at all is still the ticket 12 error it was.
+  const empty = checkBrandDoc(doc(""), currentKit(projectId).tokens, refResolverFor(projectId));
+  assert.deepEqual(empty.map((f) => f.code), ["missing_asset"]);
+  assert.equal(empty[0].severity, "error");
 
   // The reference is stable: the asset it names never changes underneath it.
   const asset = getAssetById(Number(ref.slice("asset://".length)));
@@ -457,14 +469,22 @@ test("a referenced asset renders as itself, in the preview and the export alike"
   const preview = renderPreview(SESSION, { id: piece.id });
   assert.equal(preview.ok, true);
   const html = (preview.response.preview as { slides: string[] }).slides[0];
-  // The bytes are in the markup, so the screenshot of this same HTML shows
-  // the same picture — the preview-equals-export invariant, with pixels.
-  assert.match(html, /<img src="data:image\/png;base64,/);
+  const id = Number(ref.slice("asset://".length));
+  // The markup carries the asset's URL, not its bytes. The export
+  // screenshots this same HTML and serves those bytes into the page, so
+  // preview equals export while the response stays small.
+  assert.match(html, new RegExp(`<img src="/api/assets/${id}/bytes"`));
+  assert.ok(!html.includes("base64,"), "no image bytes inlined into the response");
   assert.ok(!html.includes(`image: ${ref}`), "no placeholder where a real image resolved");
+
+  // And small enough to survive the gateway's custody lint, which treats a
+  // long high-entropy run — exactly what base64 image data looks like — as
+  // secret-shaped and blocks the response.
+  assert.deepEqual(findSecretShapedStrings(html), []);
 
   // One resolver call per distinct ref, however many layers use it.
   const resolve = assetResolverFor(projectId);
-  assert.equal(resolve(ref), resolve(ref));
+  assert.equal(resolve(ref), `/api/assets/${id}/bytes`);
   assert.equal(resolve("asset://424242"), null);
 
   // An unresolvable reference still renders, as the placeholder that names it.
@@ -501,4 +521,77 @@ test("an edit batch can point an image layer at a newly registered asset", () =>
     checkBrandDoc(reload(piece.id).doc, currentKit(projectId).tokens, refResolverFor(projectId)),
     []
   );
+});
+
+test("a real image is served with its own sniffed type and no room to reinterpret it", async () => {
+  const registered = registerAsset(SESSION, {
+    origin: "ai_host",
+    prompt: "Grounded prompt v1",
+    rights: "generated for this project",
+    bytesBase64: base64(png(4 * 1024)),
+  });
+  const id = (registered.response.asset as { id: number }).id;
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/assets/${id}/bytes`, {
+    headers: { cookie },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "image/png");
+  // The bytes came from outside; a browser must not go looking for a better
+  // idea of what they are.
+  assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+  assert.match(String(res.headers.get("content-security-policy")), /sandbox/);
+  assert.equal((await res.arrayBuffer()).byteLength, 4 * 1024);
+
+  assert.equal(
+    (await fetch(`http://127.0.0.1:${port}/api/assets/${id}/bytes`)).status,
+    401
+  );
+  assert.equal(
+    (await fetch(`http://127.0.0.1:${port}/api/assets/424242/bytes`, { headers: { cookie } }))
+      .status,
+    404
+  );
+});
+
+test("a RIFF container that is not a WebP is refused", () => {
+  // RIFF alone is WAV, AVI, and much else. Accepting it would let a
+  // non-image be stored and later served from the dashboard's own origin.
+  const riff = Buffer.alloc(64, 0);
+  riff.write("RIFF", 0, "ascii");
+  riff.write("AVI ", 8, "ascii");
+  assert.equal(sniffMediaType(riff), null);
+
+  const webp = Buffer.alloc(64, 0);
+  webp.write("RIFF", 0, "ascii");
+  webp.write("WEBP", 8, "ascii");
+  assert.equal(sniffMediaType(webp), "image/webp");
+
+  const result = registerAsset(SESSION, {
+    origin: "ai_host",
+    prompt: "Grounded prompt v1",
+    bytesBase64: base64(riff),
+  });
+  assert.equal(result.response.error, "invalid_schema");
+});
+
+test("an accepted asset records its own prompt, not one left over from an earlier try", () => {
+  const piece = makePiece(SESSION, "lineage wins");
+
+  // A first attempt fails and leaves its prompt on the piece.
+  registerAsset(SESSION, { origin: "ai_host", prompt: "First prompt", pieceId: piece.id });
+  assert.equal(reload(piece.id).imagePrompt, "First prompt");
+
+  // The second attempt lands with a different prompt — and that is the one
+  // that actually made this image.
+  const second = registerAsset(SESSION, {
+    origin: "ai_host",
+    prompt: "Second prompt",
+    rights: "generated for this project",
+    bytesBase64: base64(png(4 * 1024)),
+    pieceId: piece.id,
+  });
+  assert.equal(second.ok, true);
+  assert.equal((second.response.asset as { prompt: string }).prompt, "Second prompt");
+  assert.equal(reload(piece.id).imagePrompt, "Second prompt");
 });

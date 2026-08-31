@@ -271,3 +271,51 @@ test("render_preview refuses unknown and cross-project pieces", () => {
   assert.equal(missing.ok, false);
   assert.equal(missing.response.error, "unknown_piece");
 });
+
+test("an exported PNG really contains the asset, served into Chromium from the database", async () => {
+  // The markup points image layers at /api/assets/<id>/bytes and no server
+  // is running for an export, so the exporter fulfils that request itself.
+  // If it did not, the image would simply fail to load and the screenshot
+  // would still succeed — so prove it by comparing against the same layout
+  // with a reference that resolves to nothing.
+  function withImage(ref: string): PieceDoc {
+    return {
+      format: "1:1",
+      slides: [{ layers: [{ type: "image", ref, frame: { x: 0, y: 0, w: 1, h: 1 } }] }],
+      captions: { instagram: "", x: "", linkedin: "", tiktok: "" },
+    };
+  }
+
+  async function exportedPng(title: string, ref: string): Promise<Buffer> {
+    const created = createPiece(SESSION, { title, doc: withImage(ref) });
+    assert.equal(created.ok, true);
+    const id = (created.response.piece as { id: number }).id;
+    assert.equal(startDrafting(SESSION, { id }).ok, true);
+    assert.equal(submitForReview(SESSION, { id }).ok, true);
+    const record = getPieceById(id);
+    assert.ok(record);
+    assert.equal(approvePiece(record, "operator").ok, true);
+    const approved = getPieceById(id);
+    assert.ok(approved);
+    assert.equal(planPiece(approved, "2026-09-05", "operator").ok, true);
+
+    const exported = await exportPiece(SESSION, { id });
+    assert.equal(exported.ok, true, JSON.stringify(exported.response));
+    const bundle = exported.response.bundle as { name: string; manifest: ExportManifest };
+    const png = bundle.manifest.files.find((f) => f.kind === "png");
+    assert.ok(png);
+    return fs.readFileSync(
+      path.join(process.env.EXPORTS_PATH as string, bundle.name, png.name)
+    );
+  }
+
+  const withAsset = await exportedPng("exports the real asset", heroRef);
+  const withoutAsset = await exportedPng("exports a placeholder", "asset://424242");
+
+  assert.notDeepEqual(
+    withAsset,
+    withoutAsset,
+    "the resolved asset must change what the screenshot shows"
+  );
+  assert.equal(withAsset.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+});

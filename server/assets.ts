@@ -29,6 +29,12 @@ import { getPieceById, type PieceRecord } from "./pieces";
 /** The inline base64 cap, in bytes of decoded payload. */
 export const MAX_ASSET_BYTES = 2 * 1024 * 1024;
 
+// Asset bytes live in the database rather than on disk beside the export
+// bundles. An export bundle can be regenerated from the piece; an asset
+// cannot be regenerated from anything, and litestream replicates the
+// database and not the data directory. Losing the bytes would mean losing
+// work no one can reproduce.
+
 export const ASSET_ORIGINS = ["ai_host", "operator_upload", "project_import"] as const;
 export type AssetOrigin = (typeof ASSET_ORIGINS)[number];
 
@@ -76,6 +82,23 @@ const ASSET_REF = /^asset:\/\/(\d+)$/;
 export function assetIdFromRef(ref: string): number | null {
   const match = ASSET_REF.exec(ref);
   return match ? Number(match[1]) : null;
+}
+
+/** Where an asset's bytes are served from. Rendered markup points here. */
+export function assetBytesPath(id: number): string {
+  return `/api/assets/${id}/bytes`;
+}
+
+const BYTES_PATH = /^\/api\/assets\/(\d+)\/bytes$/;
+
+export function assetIdFromBytesPath(pathname: string): number | null {
+  const match = BYTES_PATH.exec(pathname);
+  return match ? Number(match[1]) : null;
+}
+
+/** The image handoff state a piece carries once an asset lands. */
+export function attachedState(ref: string): string {
+  return `asset_attached:${ref}`;
 }
 
 function rowToRecord(row: AssetRow): AssetRecord {
@@ -142,8 +165,6 @@ export function resolveAssetRef(ref: string, projectId: number): AssetRecord | n
 // ---------------------------------------------------------------------------
 // The piece's side of the handoff
 
-export type ImageState = null | "prompt_prepared" | `asset_attached:${string}`;
-
 function setImageState(pieceId: number, state: string | null, prompt: string | null): void {
   getDb()
     .prepare("UPDATE pieces SET image_state = ?, image_prompt = ? WHERE id = ?")
@@ -200,9 +221,13 @@ export function insertAsset(intake: AssetIntake): AssetRecord {
   return asset;
 }
 
-/** Attach a registered asset to the piece the handoff was for. */
+/**
+ * Attach a registered asset to the piece the handoff was for. The asset's
+ * own prompt wins: it is what actually produced this image, and a prompt
+ * left over from an earlier attempt would be a lie about lineage.
+ */
 export function attachToPiece(piece: PieceRecord, asset: AssetRecord, actor: string): void {
-  setImageState(piece.id, `asset_attached:${asset.ref}`, preparedPrompt(piece.id) ?? asset.prompt);
+  setImageState(piece.id, attachedState(asset.ref), asset.prompt ?? preparedPrompt(piece.id));
   audit(actor, "assets.attached", {
     pieceId: piece.id,
     assetId: asset.id,
@@ -218,10 +243,6 @@ function errResult(error: string, message: string, next: string): GatewayResult 
   return { ok: false, response: { error, message, next } };
 }
 
-function rightsMissing(message: string, next: string): GatewayResult {
-  return errResult("rights_missing", message, next);
-}
-
 export const registerAssetInputSchema = z.object({
   origin: z.string().optional(),
   prompt: z.string().optional(),
@@ -232,18 +253,39 @@ export const registerAssetInputSchema = z.object({
   pieceId: z.number().int().optional(),
 });
 
-const MEDIA_TYPES: Record<string, string> = {
-  "89504e47": "image/png",
-  ffd8ffe0: "image/jpeg",
-  ffd8ffe1: "image/jpeg",
-  ffd8ffdb: "image/jpeg",
-  "52494646": "image/webp",
-};
-
-/** What the bytes actually are, rather than what the caller said they are. */
+/**
+ * What the bytes actually are, rather than what the caller said they are.
+ * These bytes arrive from an AI Host and are later served back from the
+ * dashboard's own origin, so this is an allowlist and is deliberately
+ * narrow: a container that merely *could* hold an image does not count.
+ */
 export function sniffMediaType(bytes: Buffer): string | null {
-  const magic = bytes.subarray(0, 4).toString("hex");
-  return MEDIA_TYPES[magic] ?? null;
+  if (bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a") return "image/png";
+  if (bytes.subarray(0, 3).toString("hex") === "ffd8ff") return "image/jpeg";
+  // RIFF alone is WAV, AVI, and much else; only RIFF....WEBP is a WebP.
+  if (
+    bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+    bytes.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+export type ImagePayloadProblem = "empty" | "too_large" | "not_an_image";
+
+/**
+ * The three things that disqualify a payload, in the order both intake
+ * paths check them. Returns null when the bytes are usable.
+ */
+export function inspectImagePayload(
+  bytes: Buffer
+): { problem: ImagePayloadProblem } | { mediaType: string } {
+  if (bytes.length === 0) return { problem: "empty" };
+  if (bytes.length > MAX_ASSET_BYTES) return { problem: "too_large" };
+  const mediaType = sniffMediaType(bytes);
+  if (!mediaType) return { problem: "not_an_image" };
+  return { mediaType };
 }
 
 /**
@@ -257,7 +299,8 @@ export function registerAsset(sessionKey: string, input: unknown): GatewayResult
 
   const parsed = registerAssetInputSchema.safeParse(input);
   if (!parsed.success) {
-    return rightsMissing(
+    return errResult(
+      "invalid_schema",
       "The asset registration does not match the expected shape.",
       "Resend with origin, prompt (if generated), sourceAssets, and rights notes."
     );
@@ -267,8 +310,9 @@ export function registerAsset(sessionKey: string, input: unknown): GatewayResult
   // 1. Origin is the whole point: MarketingOS never claims it made an image,
   //    so it will not record one that does not say where it came from.
   if (!args.origin || !(ASSET_ORIGINS as readonly string[]).includes(args.origin)) {
-    return rightsMissing(
-      `origin is required (${ASSET_ORIGINS.join(", ")}).`,
+    return errResult(
+      "rights_missing",
+      "origin is required (ai_host, operator_upload, or project_import).",
       "Resend with origin, prompt (if generated), sourceAssets, and rights notes."
     );
   }
@@ -276,7 +320,8 @@ export function registerAsset(sessionKey: string, input: unknown): GatewayResult
 
   // 2. A generated image without its prompt has no lineage at all.
   if (origin === "ai_host" && !args.prompt) {
-    return rightsMissing(
+    return errResult(
+      "rights_missing",
       "Generated assets must carry the prompt and source-asset lineage.",
       "Resend with prompt and sourceAssets."
     );
@@ -297,35 +342,37 @@ export function registerAsset(sessionKey: string, input: unknown): GatewayResult
   }
 
   const bytes = Buffer.from(args.bytesBase64, "base64");
+  const inspected = inspectImagePayload(bytes);
 
-  // 4. Over the inline cap: the same fallback, for the same reason.
-  if (bytes.length > MAX_ASSET_BYTES) {
-    if (piece) setImageState(piece.id, "prompt_prepared", args.prompt ?? null);
-    return errResult(
-      "asset_too_large",
-      `Inline payload of ${Math.round(bytes.length / 1024)}KB exceeds the ${Math.round(
-        MAX_ASSET_BYTES / 1024
-      )}KB cap.` + (piece ? ` The piece now shows 'prompt prepared'.` : ""),
-      "Fall back to dashboard manual upload for this file."
-    );
-  }
-
-  if (bytes.length === 0) {
-    return errResult(
-      "asset_bytes_missing",
-      "The payload decoded to nothing. If this host cannot send binary tool payloads, the handoff stays manual.",
-      "Tell the Operator to use dashboard manual upload; the piece stays 'prompt prepared' until an asset actually lands."
-    );
-  }
-
-  const mediaType = sniffMediaType(bytes);
-  if (!mediaType) {
+  if ("problem" in inspected) {
+    // 4. Over the inline cap: the same fallback, for the same reason.
+    if (inspected.problem === "too_large") {
+      if (piece) setImageState(piece.id, "prompt_prepared", args.prompt ?? null);
+      return errResult(
+        "asset_too_large",
+        `Inline payload of ${Math.round(bytes.length / 1024)}KB exceeds the ${Math.round(
+          MAX_ASSET_BYTES / 1024
+        )}KB cap.` + (piece ? ` The piece now shows 'prompt prepared'.` : ""),
+        "Fall back to dashboard manual upload for this file."
+      );
+    }
+    if (inspected.problem === "empty") {
+      return errResult(
+        "asset_bytes_missing",
+        "The payload decoded to nothing. If this host cannot send binary tool payloads, the handoff stays manual.",
+        "Tell the Operator to use dashboard manual upload; the piece stays 'prompt prepared' until an asset actually lands."
+      );
+    }
+    // Storing whatever arrived and serving it back from the dashboard's own
+    // origin is how a "generated image" becomes a script; the bytes have to
+    // actually be an image.
     return errResult(
       "invalid_schema",
       "The payload is not a PNG, JPEG, or WebP image.",
       "Send the image bytes base64-encoded, or upload the file in the dashboard."
     );
   }
+  const { mediaType } = inspected;
 
   const asset = insertAsset({
     projectId: pinned.projectId,
@@ -351,7 +398,7 @@ export function registerAsset(sessionKey: string, input: unknown): GatewayResult
     response: {
       context: sessionContext(sessionKey),
       asset: assetSummary(asset),
-      piece: piece ? { id: piece.id, imageState: `asset_attached:${asset.ref}` } : null,
+      piece: piece ? { id: piece.id, imageState: attachedState(asset.ref) } : null,
       note: "MarketingOS recorded the handoff; it does not claim it generated this image.",
       ...(asset.rights === RIGHTS_UNREVIEWED
         ? {
@@ -425,15 +472,18 @@ export interface ManualUpload {
  * has looked at it, which is exactly what the inline path cannot assume.
  */
 export function uploadAsset(upload: ManualUpload): { asset: AssetRecord; piece: PieceRecord | null } {
-  if (upload.bytes.length === 0) throw new AssetError(400, "The upload is empty");
-  if (upload.bytes.length > MAX_ASSET_BYTES) {
-    throw new AssetError(
-      413,
-      `The upload is larger than the ${Math.round(MAX_ASSET_BYTES / 1024)}KB cap`
-    );
+  const inspected = inspectImagePayload(upload.bytes);
+  if ("problem" in inspected) {
+    if (inspected.problem === "empty") throw new AssetError(400, "The upload is empty");
+    if (inspected.problem === "too_large") {
+      throw new AssetError(
+        413,
+        `The upload is larger than the ${Math.round(MAX_ASSET_BYTES / 1024)}KB cap`
+      );
+    }
+    throw new AssetError(400, "The upload is not a PNG, JPEG, or WebP image");
   }
-  const mediaType = sniffMediaType(upload.bytes);
-  if (!mediaType) throw new AssetError(400, "The upload is not a PNG, JPEG, or WebP image");
+  const { mediaType } = inspected;
 
   const piece = upload.pieceId !== undefined ? getPieceById(upload.pieceId) : null;
   if (upload.pieceId !== undefined && !piece) {
