@@ -1,7 +1,7 @@
 # Define the dogfood rollout
 
 Type: grilling
-Status: claimed
+Status: resolved
 Blocked by: 10, 11, 12, 13, 14, 15
 
 ## Question
