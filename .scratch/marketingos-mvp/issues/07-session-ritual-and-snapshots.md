@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 Connected Project registration.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Guiding error fires before selection with the corrective next call
 - [ ] Stale snapshots refuse reads with `stale_snapshot` and the recovery path
