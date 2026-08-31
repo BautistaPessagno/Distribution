@@ -4,7 +4,7 @@
 
 **Blocked by:** 14 Lifecycle completion.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A saved template contains no campaign-specific text, claims, captions, or dates
 - [ ] Instantiating a template creates a fresh backlog piece with the layout intact
