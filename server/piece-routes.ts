@@ -18,6 +18,7 @@ import {
   type OperatorMove,
 } from "./piece-lifecycle";
 import { exportPieceRecord } from "./renderer";
+import { listAllTemplates, saveAsTemplateFor } from "./templates";
 import {
   getPieceById,
   listAllPieces,
@@ -86,6 +87,19 @@ export function pieceRouter(): Router {
 
   router.get("/", (_req, res) => {
     res.json({ pieces: listAllPieces().map(decorator()) });
+  });
+
+  // Creative Templates: the Operator saves a layout off a piece and starts
+  // new pieces from it. Registered ahead of /:id so the word is not read as
+  // a piece id.
+  router.get("/templates", (_req, res) => {
+    const names = projectNames();
+    res.json({
+      templates: listAllTemplates().map((template) => ({
+        ...template,
+        projectName: names.get(template.projectId) ?? `project #${template.projectId}`,
+      })),
+    });
   });
 
   // The Content Backlog and the calendar. Both read the same pieces table,
@@ -167,6 +181,14 @@ export function pieceRouter(): Router {
       }
     });
   }
+
+  router.post("/:id/save-as-template", (req, res) => {
+    const piece = pieceOr404(req, res);
+    if (!piece) return;
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const result = saveAsTemplateFor(piece, name || undefined, "operator");
+    res.status(result.ok ? 200 : 409).json(result.response);
+  });
 
   router.get("/:id", (req, res) => {
     const piece = pieceOr404(req, res);

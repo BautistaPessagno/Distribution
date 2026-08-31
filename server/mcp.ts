@@ -29,6 +29,7 @@ import {
   submitForReview,
 } from "./piece-lifecycle";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
+import { instantiateTemplate, listTemplates, saveAsTemplate } from "./templates";
 import { exportPiece, renderPreview } from "./renderer";
 import { ONBOARD_GUIDE } from "./onboard";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
@@ -181,6 +182,32 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number(), outcome: z.string() },
     },
     async ({ id, outcome }) => lintedJson(recordPieceOutcome(sessionKey, { id, outcome }).response)
+  );
+  server.registerTool(
+    "marketingos.save_as_template",
+    {
+      description:
+        "Save a Creative Piece's structure as a Creative Template: the layout, layer order, frames, format, and Brand Kit token references are kept; campaign text, claims, captions, and planning data are stripped. The piece itself is untouched.",
+      inputSchema: { id: z.number(), name: z.string().optional() },
+    },
+    async ({ id, name }) => lintedJson(saveAsTemplate(sessionKey, { id, name }).response)
+  );
+  server.registerTool(
+    "marketingos.list_templates",
+    {
+      description: "List the Creative Templates of the selected Connected Project.",
+      inputSchema: {},
+    },
+    async () => lintedJson(listTemplates(sessionKey).response)
+  );
+  server.registerTool(
+    "marketingos.instantiate_template",
+    {
+      description:
+        "Start a new Creative Piece from a Creative Template. The piece lands in the backlog with the layout intact and empty copy, bound to the Project Snapshot pinned on this session.",
+      inputSchema: { id: z.number(), title: z.string() },
+    },
+    async ({ id, title }) => lintedJson(instantiateTemplate(sessionKey, { id, title }).response)
   );
   server.registerTool(
     "marketingos.get_brand_kit",
