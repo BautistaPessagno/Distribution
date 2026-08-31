@@ -619,3 +619,22 @@ test("a project refusal and a project fault are told apart", async () => {
     stubServer.close();
   }
 });
+
+test("a second approved digest against the same snapshot is refused once the first lands", async () => {
+  // The reference refuses a digest that is no longer "the prepared change",
+  // because its sim holds only one. Here every prepared change persists, so
+  // the question is what happens when two approved digests exist against
+  // one snapshot. The first apply moves the project, and the second is then
+  // refused as stale — which is the same protection by a different route.
+  await pin("KeepAnalog");
+  const first = await approvedDigest("Two against one snapshot, first");
+  const second = await approvedDigest("Two against one snapshot, second");
+
+  assert.equal((await applyChange(SESSION, { digest: first })).ok, true);
+
+  const superseded = await applyChange(SESSION, { digest: second });
+  assert.equal(superseded.ok, false);
+  assert.equal(superseded.response.error, "stale_snapshot");
+  assert.equal(getPreparedChangeSet(second)?.status, "approved");
+  assert.equal(getReceiptForDigest(second), null);
+});
