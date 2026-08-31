@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 PieceDoc and Studio.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Property tests hold the invariants: no lost human writes, append-only history, restore-as-new-version
 - [ ] Contract tests replay the CreativePieceMachine stale-write and unknown-op scenarios
