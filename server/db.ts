@@ -175,6 +175,25 @@ function migrate(d: Database.Database): void {
       manifest TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      origin TEXT NOT NULL
+        CHECK (origin IN ('ai_host', 'operator_upload', 'project_import')),
+      prompt TEXT,
+      source_assets TEXT NOT NULL DEFAULT '[]',
+      rights TEXT NOT NULL,
+      media_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      bytes BLOB NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TRIGGER IF NOT EXISTS assets_no_update
+    BEFORE UPDATE ON assets
+    BEGIN
+      SELECT RAISE(ABORT, 'assets are immutable; register a new one');
+    END;
     CREATE TABLE IF NOT EXISTS creative_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -222,6 +241,8 @@ function migrate(d: Database.Database): void {
   addColumn(d, "pieces", "brand_outdated", "INTEGER NOT NULL DEFAULT 0");
   addColumn(d, "pieces", "planned_date", "TEXT");
   addColumn(d, "pieces", "outcome", "TEXT");
+  addColumn(d, "pieces", "image_state", "TEXT");
+  addColumn(d, "pieces", "image_prompt", "TEXT");
 
   d.prepare(
     `INSERT INTO meta (key, value) VALUES ('schema_version', ?)

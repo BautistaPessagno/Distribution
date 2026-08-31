@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 PieceDoc and Studio.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] All four register_asset outcomes (accepted, no bytes, over cap, missing origin) match the reference transcripts
 - [ ] Manual upload attaches the asset with lineage and clears prompt_prepared
