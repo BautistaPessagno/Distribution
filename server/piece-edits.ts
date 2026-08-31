@@ -111,7 +111,7 @@ function batchRejected(detail: string): GatewayResult {
   );
 }
 
-function scopedPiece(
+export function scopedPiece(
   sessionKey: string,
   id: number
 ): { piece: PieceRecord } | { error: GatewayResult } {

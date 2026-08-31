@@ -177,7 +177,7 @@ test("property: history is append-only — versions only grow, old entries never
   for (let i = 0; i < 40; i++) {
     const { docVersion } = readPiece(id);
     if (rand() < 0.3 && count > 1) {
-      const target = 1 + Math.floor(rand() * count);
+      const target: number = 1 + Math.floor(rand() * count);
       assert.equal(restoreVersion(SESSION, { id, version: target }).ok, true);
     } else {
       const result = applyEditBatch(SESSION, {
