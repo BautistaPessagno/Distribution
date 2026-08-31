@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PieceMoves } from "../piece-moves";
 import { EmptyState, Shell } from "../shell";
 import {
   FORMAT_DIMENSIONS,
@@ -67,6 +68,7 @@ interface Piece {
   pinnedKitVersion: number | null;
   brandOutdated: boolean;
   plannedDate: string | null;
+  outcome: string | null;
   createdAt: string;
   kit: BrandKit;
   /** The Operator moves this piece can take right now, decided server-side. */
@@ -198,13 +200,6 @@ function BrandKitPanel({
   );
 }
 
-const MOVE_LABELS: Record<string, string> = {
-  approve: "Approve",
-  "request-changes": "Request changes",
-  reapprove: "Re-approve against the current kit",
-  reopen: "Reopen to drafting",
-};
-
 // The Operator's half of the lifecycle. The AI Host drafts, submits, and
 // can reopen; approving is a person's act, so it lives only here. Which
 // moves apply is decided server-side and arrives on the piece.
@@ -217,30 +212,6 @@ function LifecyclePanel({
   checks: CheckReports | null;
   onMoved: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-
-  const move = useCallback(
-    async (action: string) => {
-      setBusy(true);
-      setProblem(null);
-      setNote(null);
-      try {
-        const res = await fetch(`/api/pieces/${piece.id}/${action}`, { method: "POST" });
-        const data = (await res.json()) as { message?: string; error?: string; note?: string };
-        if (!res.ok) throw new Error(data.message ?? data.error ?? "The move was refused");
-        setNote(data.note ?? null);
-        onMoved();
-      } catch (err) {
-        setProblem(err instanceof Error ? err.message : String(err));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [onMoved, piece.id]
-  );
-
   const blockers = checks
     ? checks.approval.brandErrors.length + checks.approval.needTokens.length
     : null;
@@ -253,7 +224,8 @@ function LifecyclePanel({
       )}{" "}
       {piece.brandOutdated && (
         <span className="tag tag-warn">brand-outdated — re-approve to re-pin</span>
-      )}
+      )}{" "}
+      {piece.plannedDate && <span className="tag tag-info">planned for {piece.plannedDate}</span>}
       {piece.status === "review" && (
         <p>
           {blockers === null
@@ -273,22 +245,12 @@ function LifecyclePanel({
           ))}
         </ul>
       )}
-      <div>
-        {piece.operatorMoves.map((action) => (
-          <button
-            key={action}
-            className="action-quiet"
-            disabled={busy}
-            onClick={() => void move(action)}
-            style={{ marginRight: "var(--space-1)" }}
-          >
-            {MOVE_LABELS[action] ?? action}
-          </button>
-        ))}
-        {piece.operatorMoves.length === 0 && <p>No Operator move applies while {piece.status}.</p>}
-      </div>
-      {note && <p>{note}</p>}
-      {problem && <p className="error-text">{problem}</p>}
+      <PieceMoves piece={piece} onMoved={onMoved} />
+      {piece.outcome && (
+        <p>
+          <strong>Outcome:</strong> {piece.outcome}
+        </p>
+      )}
     </div>
   );
 }

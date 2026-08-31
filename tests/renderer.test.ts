@@ -21,7 +21,13 @@ process.env.EXPORTS_PATH = path.join(tmpDir, "exports");
 import express from "express";
 import { selectProject } from "../server/gateway";
 import { applyEditBatch } from "../server/piece-edits";
-import { createPiece, type PieceDoc } from "../server/pieces";
+import {
+  approvePiece,
+  planPiece,
+  startDrafting,
+  submitForReview,
+} from "../server/piece-lifecycle";
+import { createPiece, getPieceById, type PieceDoc } from "../server/pieces";
 import {
   closeRenderer,
   exportPiece,
@@ -91,6 +97,21 @@ function makePiece(title: string): { id: number; docVersion: number } {
   return created.response.piece as { id: number; docVersion: number };
 }
 
+// Export happens only from planned (ticket 14), so a piece under test walks
+// the lifecycle first: drafting, review, approved, planned.
+function makePlannedPiece(title: string): { id: number; docVersion: number } {
+  const piece = makePiece(title);
+  assert.equal(startDrafting(SESSION, { id: piece.id }).ok, true);
+  assert.equal(submitForReview(SESSION, { id: piece.id }).ok, true);
+  const record = getPieceById(piece.id);
+  assert.ok(record);
+  assert.equal(approvePiece(record, "operator").ok, true);
+  const approved = getPieceById(piece.id);
+  assert.ok(approved);
+  assert.equal(planPiece(approved, "2026-09-05", "operator").ok, true);
+  return piece;
+}
+
 test.before(async () => {
   const a = await registerProject("KeepAnalog", `http://127.0.0.1:${port}/keepanalog`, "test");
   assert.equal(a.project.status, "healthy");
@@ -132,7 +153,7 @@ test("snapshot: slide markup is deterministic and pins layout, brand fill, and c
 });
 
 test("snapshot: exported PNG is screenshotted from the same HTML render_preview returns", async () => {
-  const { id } = makePiece("preview equals export");
+  const { id } = makePlannedPiece("preview equals export");
 
   const preview = renderPreview(SESSION, { id });
   assert.equal(preview.ok, true);
@@ -163,7 +184,7 @@ test("snapshot: exported PNG is screenshotted from the same HTML render_preview 
 // Export bundle contents
 
 test("export bundle: manifest names every file and the versions it was rendered from", async () => {
-  const { id } = makePiece("bundle manifest");
+  const { id } = makePlannedPiece("bundle manifest");
   const exported = await exportPiece(SESSION, { id });
   assert.equal(exported.ok, true);
   const bundle = exported.response.bundle as { name: string; path: string; manifest: ExportManifest };

@@ -110,6 +110,8 @@ export interface PieceRecord {
   brandOutdated: boolean;
   /** A plan, never a publishing queue. Cleared by reopen. */
   plannedDate: string | null;
+  /** What the Operator observed once the piece had run. Set by record_outcome. */
+  outcome: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -125,6 +127,7 @@ interface PieceRow {
   pinned_kit_version: number | null;
   brand_outdated: number;
   planned_date: string | null;
+  outcome: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -141,6 +144,7 @@ function rowToRecord(row: PieceRow): PieceRecord {
     pinnedKitVersion: row.pinned_kit_version,
     brandOutdated: row.brand_outdated === 1,
     plannedDate: row.planned_date,
+    outcome: row.outcome,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -180,6 +184,32 @@ export function flagBrandOutdated(projectId: number): number[] {
   return affected.map((row) => row.id);
 }
 
+/**
+ * The Content Backlog: every piece that has no planned date yet, across
+ * Connected Projects. Undated is the whole definition — a piece can be in
+ * the backlog at any point before it is planned.
+ */
+export function listBacklog(): PieceRecord[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM pieces WHERE planned_date IS NULL ORDER BY id DESC")
+    .all() as PieceRow[];
+  return rows.map(rowToRecord);
+}
+
+/**
+ * The calendar: every piece that carries a planned date, soonest first. A
+ * date on this calendar is a plan the Operator made. Nothing publishes from
+ * it, and nothing here is a queue.
+ */
+export function listPlanned(): PieceRecord[] {
+  const rows = getDb()
+    .prepare(
+      "SELECT * FROM pieces WHERE planned_date IS NOT NULL ORDER BY planned_date ASC, id ASC"
+    )
+    .all() as PieceRow[];
+  return rows.map(rowToRecord);
+}
+
 export function getPieceById(id: number): PieceRecord | null {
   const row = getDb().prepare("SELECT * FROM pieces WHERE id = ?").get(id) as
     | PieceRow
@@ -203,6 +233,7 @@ function pieceSummary(piece: PieceRecord): Record<string, unknown> {
     pinnedKitVersion: piece.pinnedKitVersion,
     brandOutdated: piece.brandOutdated,
     plannedDate: piece.plannedDate,
+    outcome: piece.outcome,
     createdAt: piece.createdAt,
   };
 }
