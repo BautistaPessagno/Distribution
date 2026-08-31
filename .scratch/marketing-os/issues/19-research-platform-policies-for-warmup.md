@@ -1,7 +1,7 @@
 # Research platform policies for warm-up actions
 
 Type: research
-Status: open
+Status: claimed
 
 ## Question
 

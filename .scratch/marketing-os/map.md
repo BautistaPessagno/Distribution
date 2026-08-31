@@ -39,6 +39,8 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Define the AI Host onboarding contract](issues/09-define-ai-host-onboarding-contract.md): one workspace-scoped connection with in-session project selection, guiding errors, onboard-plus-goal-routing discovery, a 19-tool two-domain catalog, digest-keyed approvals that never transit the host, and inline base64 image return with a manual fallback.
 - [Define the reasoning-module frontier](issues/11-define-reasoning-module-frontier.md): six native capabilities (positioning, audit, copy, hooks, social, experiments) with typed lineage-carrying artifacts, run plans only for multi-module chains, and Marketing AGI's honesty rules enforced as blocking invariants.
 - [Define the Account Operations workflow](issues/12-define-account-operations-workflow.md): durable slots with replaceable archived instances, checklist-based readiness, full proof-and-self-review Work Order cycles, blocking daily caps with a per-slot kill switch, and replacement that re-earns readiness.
+- [Define the measurement and learning loop](issues/13-define-measurement-learning-loop.md): manual social snapshots plus project funnel reads, experiment-driven measure Work Orders, decision records feeding a per-project learning log, and ladder-labeled correlation-by-default attribution.
+- [Define authentication, authorization, and secrets design](issues/18-define-auth-and-secrets.md): MCP-spec OAuth for hosts, a single passkey Operator account, per-project service tokens, and one encrypted secrets store with reference-only usage and lint-checked responses.
 
 ## Not yet specified
 

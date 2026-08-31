@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard IA prototype (3 variants)</title>
+<style>
+  :root {
+    --accent: #1a6b54; --accent-soft: #e7f1ee;
+    --ink: #17201c; --muted: #68746f; --line: #e4e7e5;
+    --bg: #f7f8f7; --card: #ffffff;
+    --warn: #92400e; --warn-soft: #fef3e2;
+    --bad: #b42318; --bad-soft: #fdecec;
+    --blue: #1d5ca8; --blue-soft: #e5effa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  .app { min-height: 100dvh; padding-bottom: 90px; }
+
+  /* shared bits */
+  .topbar { height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+  .wordmark { font-weight: 700; letter-spacing: -.01em; }
+  .proj { display: flex; gap: 6px; }
+  .proj button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; }
+  .proj button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .spacer { flex: 1; }
+  .newpiece { font: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 16px; border-radius: 9px; border: none; background: var(--accent); color: #fff; cursor: pointer; }
+  .newpiece:hover { background: #14543f; }
+  .mock { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  h2 { font-size: 15px; margin: 0 0 10px; letter-spacing: -.01em; }
+  h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+  .small { font-size: 12.5px; color: var(--muted); }
+
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+  .st-drafting { background: var(--blue-soft); color: var(--blue); }
+  .st-review { background: var(--warn-soft); color: var(--warn); }
+  .st-approved, .st-ready { background: var(--accent-soft); color: var(--accent); }
+  .st-planned { background: #e6f3f5; color: #0e6b7a; }
+  .st-backlog { background: #eef0ef; color: #5a655f; }
+  .st-warming { background: var(--warn-soft); color: var(--warn); }
+  .st-pending { background: var(--bad-soft); color: var(--bad); }
+  .st-measured { background: #17201c; color: #fff; }
+
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f0f2f1; }
+  .row:last-child { border-bottom: 0; }
+  .row .grow { flex: 1; min-width: 0; }
+  .row .t { font-weight: 600; }
+  .row .s { font-size: 12.5px; color: var(--muted); }
+
+  .promptbox { background: #17201c; color: #e7ece9; border-radius: 10px; padding: 12px 14px; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; position: relative; white-space: pre-wrap; word-break: break-word; }
+  .copybtn { position: absolute; top: 8px; right: 8px; font: inherit; font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid #3a4540; background: #232d28; color: #cfe2db; cursor: pointer; }
+  .copybtn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .stepno { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .doact { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--card); color: var(--accent); cursor: pointer; }
+  .doact:hover { background: var(--accent-soft); }
+
+  .cal { display: flex; gap: 8px; overflow-x: auto; }
+  .cal .d { min-width: 84px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font-size: 12px; color: var(--muted); background: #fbfcfb; flex: none; }
+  .cal .d.has { border-color: #bcd8ce; background: var(--accent-soft); }
+  .cal .d b { display: block; color: var(--ink); }
+  .cal .d .p { margin-top: 4px; color: var(--accent); font-weight: 600; }
+
+  .bar { height: 6px; border-radius: 3px; background: #eef0ef; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+
+  /* Variant A: guided rail */
+  .va-main { max-width: 720px; margin: 0 auto; padding: 28px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .va-step { display: flex; gap: 14px; }
+  .va-step .body { flex: 1; min-width: 0; }
+  .va-later { opacity: .75; }
+
+  /* Variant B: areas sidebar */
+  .vb { display: grid; grid-template-columns: 208px 1fr; min-height: calc(100dvh - 56px); }
+  .vb-nav { background: var(--card); border-right: 1px solid var(--line); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .vb-nav a { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .vb-nav a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .vb-nav a:hover { background: #f0f2f1; }
+  .vb-nav .count { font-size: 11px; background: #eef0ef; color: var(--muted); border-radius: 999px; padding: 1px 7px; }
+  .vb-nav a.on .count { background: var(--accent); color: #fff; }
+  .vb-main { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-content: start; }
+  .vb-main .wide { grid-column: 1 / -1; }
+  @media (max-width: 860px) { .vb { grid-template-columns: 1fr; } .vb-nav { flex-direction: row; overflow-x: auto; } .vb-main { grid-template-columns: 1fr; } }
+
+  /* Variant C: plan / act split */
+  .vc { display: grid; grid-template-columns: 1fr 420px; gap: 20px; max-width: 1200px; margin: 0 auto; padding: 24px 20px; align-items: start; }
+  .vc-plan { display: flex; flex-direction: column; gap: 16px; }
+  .vc-act { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 900px) { .vc { grid-template-columns: 1fr; } .vc-act { position: static; } }
+
+  /* switcher */
+  .switcher { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: #17201c; color: #fff; border-radius: 999px; padding: 8px 12px; box-shadow: 0 10px 30px #0004; z-index: 50; font-size: 13px; }
+  .switcher button { font: inherit; background: none; border: none; color: #fff; cursor: pointer; font-size: 15px; padding: 2px 6px; }
+  .switcher b { min-width: 190px; text-align: center; }
+</style>
+</head>
+<body>
+  <div id="root" class="app"></div>
+  <div class="switcher">
+    <button onclick="cycle(-1)" aria-label="Previous variant">&#8592;</button>
+    <b id="swlabel"></b>
+    <button onclick="cycle(1)" aria-label="Next variant">&#8594;</button>
+  </div>
+
+<script>
+/* Dashboard IA prototype: three structurally different variants on one page,
+   switchable via the bottom pill or arrow keys, reload-stable via location.hash.
+   All data is sample data. Read-only; buttons do not mutate anything. */
+
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const PROMPT = `Connect to MarketingOS and select project "keepanalog".
+Call marketingos.get_method("draft_creative_piece").
+Draft 3 Instagram posts from Creative Brief brief-12
+against snapshot snap-keepanalog-r8, citing approved claims only.`;
+
+const data = {
+  project: "KeepAnalog",
+  projects: ["KeepAnalog", "partnr", "VinylOS"],
+  next: {
+    kind: "prompt",
+    title: "Draft this week's KeepAnalog posts",
+    why: "Experiment EXP-3 needs 3 more pieces before its sample target."
+  },
+  due: [
+    { t: "Measure: launch teaser, 48h point", s: "Record views, likes, comments for the Sep 5 post", state: "queued", kind: "measure" },
+    { t: "Warm-up: @keepanalog.paper", s: "3 of 5 niche interactions left today, window closes 18:00", state: "in_progress", kind: "warmup" },
+    { t: "Approve project write chg-4f2a1c", s: "Adds 1 approved claim to KeepAnalog", state: "pending", kind: "approval" }
+  ],
+  upcoming: [
+    { t: "Five reasons paper wins", s: "Sep 8", state: "planned" },
+    { t: "Ship your ideas on paper", s: "Sep 5, exported", state: "measured" }
+  ],
+  backlog: [
+    { t: "Notebook teardown carousel", state: "backlog" },
+    { t: "Founder desk story", state: "drafting" }
+  ],
+  days: [
+    ["Sep 4", ""], ["Sep 5", "Ship your ideas"], ["Sep 6", ""], ["Sep 7", ""],
+    ["Sep 8", "Five reasons"], ["Sep 9", ""], ["Sep 10", ""]
+  ],
+  ops: [
+    { t: "@keepanalog.paper", s: "2 of 5 daily actions used", state: "ready" },
+    { t: "@partnr.app", s: "readiness 4 of 6 checked", state: "warming", pct: 66 }
+  ],
+  learning: [
+    { t: "EXP-3: Hook A vs Hook B", s: "5 of 8 sample, stop at Sep 12", state: "review" },
+    { t: "EXP-2 decision: repeat", s: "Correlated only; next observation is a 7d re-measure", state: "measured" }
+  ],
+  connection: { t: "Snapshot snap-keepanalog-r8", s: "Pinned 2h ago, no gaps", gap: "partnr: audiences empty" }
+};
+
+const promptCard = (compact) => `
+  <div class="card">
+    <h2>Next: ${esc(data.next.title)}</h2>
+    <p class="small" style="margin:0 0 10px">${esc(data.next.why)} Copy this prompt into your AI Host:</p>
+    <div class="promptbox">${esc(PROMPT)}<button class="copybtn" onclick="copyPrompt(this)">Copy</button></div>
+    ${compact ? "" : '<p class="small" style="margin:10px 0 0">When the host finishes, the drafts appear in the Studio backlog for your review.</p>'}
+  </div>`;
+
+const rows = (items) => items.map(i => `
+  <div class="row">
+    <div class="grow"><div class="t">${esc(i.t)}</div>${i.s ? `<div class="s">${esc(i.s)}</div>` : ""}</div>
+    ${i.pct ? `<div style="width:70px"><div class="bar"><i style="width:${i.pct}%"></i></div></div>` : ""}
+    <span class="pill st-${i.state}">${esc(i.state.replace("_", " "))}</span>
+  </div>`).join("");
+
+const calendar = () => `<div class="cal">${data.days.map(([d, p]) =>
+  `<div class="d ${p ? "has" : ""}"><b>${d}</b>${p ? `<div class="p">${esc(p)}</div>` : "<div>free</div>"}</div>`).join("")}</div>`;
+
+const topbar = () => `
+  <div class="topbar">
+    <span class="wordmark">MarketingOS</span>
+    <div class="proj">${data.projects.map(p => `<button class="${p === data.project ? "on" : ""}">${p}</button>`).join("")}</div>
+    <span class="mock">sample data</span>
+    <div class="spacer"></div>
+    <button class="newpiece">New Creative Piece</button>
+  </div>`;
+
+/* Variant A: one guided rail. The whole dashboard is a numbered queue;
+   the IA is "do the next thing", areas exist only as steps. */
+function variantA() {
+  const step = (n, inner, later) => `<div class="va-step ${later ? "va-later" : ""}"><span class="stepno">${n}</span><div class="body">${inner}</div></div>`;
+  return topbar() + `<div class="va-main">
+    ${step(1, promptCard(false))}
+    ${step(2, `<div class="card"><h2>Then: today's hand work</h2>${rows(data.due)}
+      <p class="small" style="margin:10px 0 0">One at a time. Each opens with a single instruction and a proof field.</p></div>`, true)}
+    ${step(3, `<div class="card"><h2>Later: the plan</h2>${calendar()}
+      <div style="margin-top:12px"><h3>Backlog (undated)</h3>${rows(data.backlog)}</div></div>`, true)}
+    ${step(4, `<div class="card"><h2>Standing: accounts and learning</h2>${rows(data.ops)}${rows(data.learning)}
+      <p class="small" style="margin:10px 0 0">${esc(data.connection.t)}. ${esc(data.connection.s)}.</p></div>`, true)}
+  </div>`;
+}
+
+/* Variant B: areas sidebar. The IA is a spatial map of the seven areas;
+   Today is a two-column overview of everything at once. */
+function variantB() {
+  const nav = [["Today", 3, true], ["Strategy", 0], ["Studio", 4], ["Calendar", 2], ["Operations", 2], ["Learning", 2], ["Project connection", 1]];
+  return topbar() + `<div class="vb">
+    <nav class="vb-nav">${nav.map(([n, c, on]) =>
+      `<a href="javascript:void 0" class="${on ? "on" : ""}">${n}${c ? `<span class="count">${c}</span>` : ""}</a>`).join("")}</nav>
+    <main class="vb-main">
+      <div class="wide">${promptCard(true)}</div>
+      <div class="card"><h2>Due today</h2>${rows(data.due)}</div>
+      <div class="card"><h2>Studio</h2>${rows(data.upcoming)}${rows(data.backlog)}</div>
+      <div class="card"><h2>Operations</h2>${rows(data.ops)}</div>
+      <div class="card"><h2>Learning</h2>${rows(data.learning)}</div>
+      <div class="wide card"><h2>Calendar</h2>${calendar()}</div>
+    </main>
+  </div>`;
+}
+
+/* Variant C: plan left, act right. The IA is a two-pane split:
+   everything scheduled and shelved on the left, the single live
+   action plus approvals pinned on the right. */
+function variantC() {
+  return topbar() + `<div class="vc">
+    <div class="vc-plan">
+      <div class="card"><h2>Calendar</h2>${calendar()}</div>
+      <div class="card"><h2>Upcoming pieces</h2>${rows(data.upcoming)}</div>
+      <div class="card"><h2>Backlog (undated)</h2>${rows(data.backlog)}</div>
+      <div class="card"><h2>Accounts</h2>${rows(data.ops)}</div>
+      <div class="card"><h2>Learning</h2>${rows(data.learning)}</div>
+    </div>
+    <aside class="vc-act">
+      ${promptCard(true)}
+      <div class="card"><h2>Waiting on you</h2>${rows(data.due)}
+        <button class="doact" style="margin-top:10px">Open first task</button></div>
+      <div class="card"><h3>Connection</h3><p class="small" style="margin:0">${esc(data.connection.t)}. ${esc(data.connection.s)}. Gap: ${esc(data.connection.gap)}.</p></div>
+    </aside>
+  </div>`;
+}
+
+const variants = [
+  ["A", "Guided rail", variantA],
+  ["B", "Areas sidebar", variantB],
+  ["C", "Plan and act split", variantC]
+];
+
+function current() {
+  const key = (location.hash.match(/variant=([ABC])/) || [])[1] || "A";
+  return Math.max(0, variants.findIndex(v => v[0] === key));
+}
+function render() {
+  const i = current();
+  document.getElementById("root").innerHTML = variants[i][2]();
+  document.getElementById("swlabel").textContent = `${variants[i][0]} (${variants[i][1]})`;
+}
+function cycle(d) {
+  const i = (current() + d + variants.length) % variants.length;
+  location.hash = `variant=${variants[i][0]}`;
+}
+function copyPrompt(btn) {
+  navigator.clipboard && navigator.clipboard.writeText(PROMPT);
+  btn.textContent = "Copied";
+  setTimeout(() => { btn.textContent = "Copy"; }, 1200);
+}
+window.addEventListener("hashchange", render);
+window.addEventListener("keydown", (e) => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === "ArrowLeft") cycle(-1);
+  if (e.key === "ArrowRight") cycle(1);
+});
+render();
+</script>
+</body>
+</html>

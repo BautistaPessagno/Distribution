@@ -1,7 +1,7 @@
 # Prototype the dashboard information architecture
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 09, 10, 11, 12
 
 ## Question
