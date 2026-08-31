@@ -175,6 +175,22 @@ function migrate(d: Database.Database): void {
       manifest TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS project_changes (
+      digest TEXT PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      snapshot_id TEXT NOT NULL,
+      cursor INTEGER NOT NULL,
+      summary TEXT NOT NULL,
+      change_set TEXT NOT NULL,
+      diff TEXT NOT NULL,
+      validations TEXT NOT NULL DEFAULT '[]',
+      warnings TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected', 'used')),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      decided_at TEXT,
+      decided_by TEXT
+    );
     CREATE TABLE IF NOT EXISTS assets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id),

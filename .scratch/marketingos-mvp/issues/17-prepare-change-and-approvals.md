@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 Dashboard shell and design tokens, 07 Session ritual and Project Snapshots.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Preparing a change creates a pending digest visible in the dashboard with its exact diff
 - [ ] get_approval reports pending, approved, and rejected with the correct next action
