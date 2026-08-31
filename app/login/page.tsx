@@ -5,6 +5,13 @@ import { useEffect, useState } from "react";
 
 type Phase = "loading" | "first-run" | "sign-in" | "recovery-shown";
 
+// Same-origin relative paths only, so ?next= can never redirect off-site.
+function nextPath(): string {
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+  return "/";
+}
+
 export default function LoginPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +23,7 @@ export default function LoginPage() {
       .then((res) => res.json())
       .then((status: { operatorExists: boolean; authenticated: boolean }) => {
         if (status.authenticated) {
-          window.location.href = "/";
+          window.location.href = nextPath();
           return;
         }
         setPhase(status.operatorExists ? "sign-in" : "first-run");
@@ -56,7 +63,7 @@ export default function LoginPage() {
         body: JSON.stringify(assertion),
       });
       if (!verifyRes.ok) throw new Error((await verifyRes.json()).error);
-      window.location.href = "/";
+      window.location.href = nextPath();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -72,7 +79,7 @@ export default function LoginPage() {
         body: JSON.stringify({ code: recoveryInput }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      window.location.href = "/";
+      window.location.href = nextPath();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -104,7 +111,7 @@ export default function LoginPage() {
             is the only way back in if you lose your passkey.
           </p>
           <p className="recovery-code">{recoveryCode}</p>
-          <button className="action-primary" onClick={() => (window.location.href = "/")}>
+          <button className="action-primary" onClick={() => (window.location.href = nextPath())}>
             I saved it — continue
           </button>
         </>
