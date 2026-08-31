@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 Atomic edit batches and version history.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Renderer snapshot tests pin that preview and exported PNG come from the same components
 - [ ] The export bundle names every file and the versions it was rendered from
