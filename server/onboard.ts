@@ -20,6 +20,10 @@ export const ONBOARD_GUIDE = {
     "marketingos.select_project": "Pin the session to one Connected Project Snapshot.",
     "marketingos.get_method":
       "Route a marketing goal to a Method Library entry: steps, rubric, output schema. Chained goals return a persisted MarketingRunPlan; unknown goals return closest-goal suggestions.",
+    "marketingos.create_piece":
+      "Create a Creative Piece from a PieceDoc bound to the pinned Project Snapshot. It starts in the backlog for Operator review in Studio.",
+    "marketingos.get_piece": "Read one Creative Piece with its full PieceDoc. Cross-project access is refused.",
+    "marketingos.list_pieces": "List the selected project's Creative Pieces with status tags.",
     "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
     "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },

@@ -10,6 +10,7 @@ import {
   sessionContext,
 } from "./gateway";
 import { getMethod } from "./methods";
+import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { ONBOARD_GUIDE } from "./onboard";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
 import { log } from "./log";
@@ -62,6 +63,33 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { goal: z.string() },
     },
     async ({ goal }) => lintedJson(getMethod(sessionKey, goal).response)
+  );
+  server.registerTool(
+    "marketingos.create_piece",
+    {
+      description:
+        "Create a Creative Piece from a PieceDoc (1-20 slides of text/image/shape/logo layers, format 4:5|1:1|9:16|16:9, captions for instagram/x/linkedin/tiktok). The piece is bound to the pinned Project Snapshot and starts in the backlog.",
+      inputSchema: { title: z.string(), doc: pieceDocSchema },
+    },
+    async ({ title, doc }) => lintedJson(createPiece(sessionKey, { title, doc }).response)
+  );
+  server.registerTool(
+    "marketingos.get_piece",
+    {
+      description:
+        "Read one Creative Piece of the selected Connected Project, including its full PieceDoc. Cross-project piece access is refused.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(getPiece(sessionKey, id).response)
+  );
+  server.registerTool(
+    "marketingos.list_pieces",
+    {
+      description:
+        "List the Creative Pieces of the selected Connected Project with status tags.",
+      inputSchema: {},
+    },
+    async () => lintedJson(listPieces(sessionKey).response)
   );
   server.registerTool(
     "project.get_snapshot",

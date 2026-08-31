@@ -96,6 +96,26 @@ export function sessionContext(sessionKey: string): SessionContext {
   return ctx(getSession(sessionKey));
 }
 
+export interface PinnedSession {
+  projectId: number;
+  projectName: string;
+  snapshotId: string;
+}
+
+export function pinnedSession(sessionKey: string): PinnedSession | null {
+  const snapshot = getSession(sessionKey).snapshot;
+  if (!snapshot) return null;
+  return {
+    projectId: snapshot.projectId,
+    projectName: snapshot.projectName,
+    snapshotId: snapshot.id,
+  };
+}
+
+export function registerInFlight(sessionKey: string, label: string): void {
+  getSession(sessionKey).inFlight.push(label);
+}
+
 function errResult(error: string, message: string, next: string): GatewayResult {
   return { ok: false, response: { error, message, next } };
 }

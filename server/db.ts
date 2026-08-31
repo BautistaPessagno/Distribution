@@ -130,6 +130,18 @@ function migrate(d: Database.Database): void {
       plan TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS pieces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'backlog'
+        CHECK (status IN ('backlog', 'drafting', 'review', 'approved', 'planned', 'exported', 'measured')),
+      snapshot TEXT NOT NULL,
+      doc TEXT NOT NULL,
+      doc_version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,
