@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 Walking skeleton.
 
-**Status:** done
+**Status:** ready-for-agent
 
 - [x] Storing, resolving, rotating, and revoking a secret works only through the one custody module
 - [x] A response containing a secret-shaped string fails the lint check with a test proving it
