@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PieceMoves } from "../piece-moves";
 import { EmptyState, Shell } from "../shell";
 
 // Planning, seen two ways: the Content Backlog holds every piece with no
@@ -25,53 +26,11 @@ interface CalendarDay {
   pieces: PlannedPiece[];
 }
 
-const MOVE_LABELS: Record<string, string> = {
-  plan: "Plan a date",
-  unplan: "Unplan",
-  export: "Export the bundle",
-  reapprove: "Re-approve against the current kit",
-  reopen: "Reopen to drafting",
-};
-
 // Only the moves that make sense from a planning screen; approving and
 // requesting changes belong with the document, in Studio.
-const PLANNING_MOVES = new Set(["plan", "unplan", "export", "reapprove"]);
+const PLANNING_MOVES = ["reapprove", "plan", "unplan", "export"] as const;
 
-function PieceRow({
-  piece,
-  onMoved,
-}: {
-  piece: PlannedPiece;
-  onMoved: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [date, setDate] = useState("");
-
-  const move = useCallback(
-    async (action: string) => {
-      setBusy(true);
-      setProblem(null);
-      try {
-        const res = await fetch(`/api/pieces/${piece.id}/${action}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(action === "plan" ? { date } : {}),
-        });
-        const data = (await res.json()) as { message?: string; error?: string };
-        if (!res.ok) throw new Error(data.message ?? data.error ?? "The move was refused");
-        onMoved();
-      } catch (err) {
-        setProblem(err instanceof Error ? err.message : String(err));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [date, onMoved, piece.id]
-  );
-
-  const moves = piece.operatorMoves.filter((m) => PLANNING_MOVES.has(m));
-
+function PieceRow({ piece, onMoved }: { piece: PlannedPiece; onMoved: () => void }) {
   return (
     <li className="connection-row">
       <div>
@@ -82,35 +41,13 @@ function PieceRow({
         )}
         <div className="body-text">
           doc v{piece.docVersion}
-          {piece.pinnedKitVersion !== null ? ` · approved against kit v${piece.pinnedKitVersion}` : ""}
+          {piece.pinnedKitVersion !== null
+            ? ` · approved against kit v${piece.pinnedKitVersion}`
+            : ""}
           {piece.plannedDate ? ` · planned for ${piece.plannedDate}` : " · undated"}
         </div>
-        {problem && <p className="error-text">{problem}</p>}
       </div>
-      <div>
-        {moves.includes("plan") && (
-          <label>
-            <span className="tag">date</span>{" "}
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              aria-label={`Planned date for ${piece.title}`}
-            />{" "}
-          </label>
-        )}
-        {moves.map((action) => (
-          <button
-            key={action}
-            className="action-quiet"
-            disabled={busy || (action === "plan" && date === "")}
-            onClick={() => void move(action)}
-            style={{ marginLeft: "var(--space-1)" }}
-          >
-            {MOVE_LABELS[action] ?? action}
-          </button>
-        ))}
-      </div>
+      <PieceMoves piece={piece} only={PLANNING_MOVES} onMoved={onMoved} />
     </li>
   );
 }

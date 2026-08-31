@@ -72,11 +72,10 @@ function wrongStatus(piece: PieceRecord, action: string, expected: string): Gate
 }
 
 /**
- * What a move does to the approval state that rides alongside the status.
- * Only three of these ever occur, and naming them is what keeps the writes
- * honest: nothing else in the row is touched.
+ * What a move writes alongside the status. Naming each shape is what keeps
+ * the writes honest: a move touches these columns and nothing else.
  */
-type ApprovalWrite =
+type RowWrite =
   /** Move the status; leave pin, flag, and planned date exactly as they are. */
   | { kind: "keep" }
   /** Approval or re-approval: pin this kit version and clear the flag. */
@@ -91,7 +90,7 @@ type ApprovalWrite =
 function writeStatus(
   piece: PieceRecord,
   status: PieceStatus,
-  write: ApprovalWrite
+  write: RowWrite
 ): PieceRecord {
   const assignments = ["status = ?", "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"];
   const values: (string | number | null)[] = [status];
@@ -188,7 +187,7 @@ function lifecycleResponse(piece: PieceRecord, note: string): GatewayResult {
       note,
       // Reported, never enforced: heuristics advise.
       qualityFindings: qualityReport(piece.doc, piece.docVersion).findings,
-      availableMoves: availableOperatorMoves(piece),
+      operatorMoves: availableOperatorMoves(piece),
     },
   };
 }
@@ -397,11 +396,12 @@ export function exportRefusal(piece: PieceRecord): GatewayResult | null {
   return null;
 }
 
-/** Called by the exporter once a bundle exists. */
-export function markExported(piece: PieceRecord, actor: string): PieceRecord {
-  const updated = writeStatus(piece, "exported", { kind: "keep" });
-  audit(actor, "pieces.export_recorded", { pieceId: piece.id, docVersion: piece.docVersion });
-  return updated;
+/**
+ * Called by the exporter once a bundle exists. The exporter writes the audit
+ * row for the export itself, so this only moves the status.
+ */
+export function markExported(piece: PieceRecord): PieceRecord {
+  return writeStatus(piece, "exported", { kind: "keep" });
 }
 
 export function recordOutcome(piece: PieceRecord, note: unknown, actor: string): GatewayResult {
@@ -461,26 +461,6 @@ export function startDrafting(sessionKey: string, input: unknown): GatewayResult
 
 export function submitForReview(sessionKey: string, input: unknown): GatewayResult {
   return hostTransition(sessionKey, input, "marketingos.submit_for_review", submitPieceForReview);
-}
-
-export function planPieceForHost(sessionKey: string, input: unknown): GatewayResult {
-  const parsed = z.object({ id: z.number().int(), date: z.string() }).safeParse(input);
-  if (!parsed.success) {
-    return errResult(
-      "invalid_transition",
-      "Planning names the piece id and the date.",
-      "Call marketingos.plan_piece with {id, date} where date is YYYY-MM-DD."
-    );
-  }
-  const scoped = scopedPiece(sessionKey, parsed.data.id);
-  if ("error" in scoped) return scoped.error;
-  const result = planPiece(scoped.piece, parsed.data.date, "ai-host");
-  if (!result.ok) return result;
-  return { ok: true, response: { context: sessionContext(sessionKey), ...result.response } };
-}
-
-export function unplan(sessionKey: string, input: unknown): GatewayResult {
-  return hostTransition(sessionKey, input, "marketingos.unplan_piece", unplanPiece);
 }
 
 export function recordPieceOutcome(sessionKey: string, input: unknown): GatewayResult {

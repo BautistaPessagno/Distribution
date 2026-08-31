@@ -248,7 +248,7 @@ export async function exportPieceRecord(
     )
     .run(piece.id, piece.docVersion, kit.version, path.join("data", "exports", bundleName), JSON.stringify(manifest));
 
-  const exported = markExported(piece, actor);
+  const exported = markExported(piece);
   audit(actor, "pieces.exported", {
     pieceId: piece.id,
     projectId: piece.projectId,

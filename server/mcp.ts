@@ -23,12 +23,10 @@ import {
 } from "./piece-edits";
 import {
   approvalStatus,
-  planPieceForHost,
   recordPieceOutcome,
   reopen,
   startDrafting,
   submitForReview,
-  unplan,
 } from "./piece-lifecycle";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { exportPiece, renderPreview } from "./renderer";
@@ -174,24 +172,6 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number() },
     },
     async ({ id }) => lintedJson(reopen(sessionKey, { id }).response)
-  );
-  server.registerTool(
-    "marketingos.plan_piece",
-    {
-      description:
-        "Give an approved Creative Piece a planned date (YYYY-MM-DD). A planned date is a plan the Operator intends to act on; nothing publishes automatically, and only planned pieces can be exported.",
-      inputSchema: { id: z.number(), date: z.string() },
-    },
-    async ({ id, date }) => lintedJson(planPieceForHost(sessionKey, { id, date }).response)
-  );
-  server.registerTool(
-    "marketingos.unplan_piece",
-    {
-      description:
-        "Take the planned date off a Creative Piece, returning it to approved and undated. The approval still stands.",
-      inputSchema: { id: z.number() },
-    },
-    async ({ id }) => lintedJson(unplan(sessionKey, { id }).response)
   );
   server.registerTool(
     "marketingos.record_outcome",

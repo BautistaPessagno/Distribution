@@ -54,6 +54,7 @@ import {
   type RequiredResource,
   type ResourceEnvelope,
 } from "../server/project-domain-sdk";
+import { ONBOARD_GUIDE } from "../server/onboard";
 import { isActiveProjectTokenHash, registerProject } from "../server/projects";
 import { closeRenderer, exportPiece, exportPieceRecord } from "../server/renderer";
 import { stubVerifyAgainstProjects } from "../server/stub-project";
@@ -242,8 +243,11 @@ test("an export from planned produces the bundle and moves the piece to exported
 
   const now = reload(piece.id);
   assert.equal(now.status, "exported");
-  // Exported work is out of the backlog and off the calendar's open work.
+  // It keeps its planned date, so it stays on the calendar as a record of
+  // what was done and out of the backlog, which is undated work only.
+  assert.equal(now.plannedDate, "2026-09-05");
   assert.ok(!listBacklog().some((p) => p.id === piece.id));
+  assert.ok(listPlanned().some((p) => p.id === piece.id));
 
   // A second export is refused: the piece has already left.
   const again = await exportPieceRecord(now, "operator");
@@ -406,4 +410,27 @@ test("the host exports through the gateway, scoped to its selected project", asy
   assert.equal(result.ok, true, JSON.stringify(result.response));
   assert.ok(result.response.context, "the gateway echoes its session context");
   assert.equal(reload(piece.id).status, "exported");
+});
+
+test("the Content Backlog is every undated piece, whatever its status", () => {
+  // The glossary defines the Content Backlog as pieces with no planned
+  // distribution date yet. Status does not come into it.
+  const drafting = makePiece("undated draft");
+  assert.equal(startDrafting(SESSION, { id: drafting.id }).ok, true);
+  const waiting = approved("undated and approved");
+
+  const ids = listBacklog().map((p) => p.id);
+  assert.ok(ids.includes(drafting.id));
+  assert.ok(ids.includes(waiting.id));
+  assert.ok(listBacklog().every((p) => p.plannedDate === null));
+});
+
+test("planning is not on the host surface: the calendar is the Operator's", () => {
+  // Ticket 13 kept approval off the host surface; planning what the Operator
+  // will do, and when, belongs with it. The host reads the plan through
+  // get_piece and list_pieces, and records an outcome once work has run.
+  const tools = Object.keys(ONBOARD_GUIDE.tools);
+  assert.ok(!tools.includes("marketingos.plan_piece"));
+  assert.ok(!tools.includes("marketingos.unplan_piece"));
+  assert.ok(tools.includes("marketingos.record_outcome"));
 });

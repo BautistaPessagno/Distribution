@@ -191,9 +191,7 @@ export function flagBrandOutdated(projectId: number): number[] {
  */
 export function listBacklog(): PieceRecord[] {
   const rows = getDb()
-    .prepare(
-      "SELECT * FROM pieces WHERE planned_date IS NULL AND status NOT IN ('exported', 'measured') ORDER BY id DESC"
-    )
+    .prepare("SELECT * FROM pieces WHERE planned_date IS NULL ORDER BY id DESC")
     .all() as PieceRow[];
   return rows.map(rowToRecord);
 }

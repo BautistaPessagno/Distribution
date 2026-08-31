@@ -45,15 +45,28 @@ export function pieceRouter(): Router {
     return new Map(listProjects().map((p) => [p.id, p.name]));
   }
 
-  // Everything the dashboard needs to paint a piece: its project, the kit it
-  // renders through, and the Operator moves it can take right now.
-  function decorate(piece: PieceRecord) {
+  /**
+   * Everything the dashboard needs to paint a piece: its project, the kit it
+   * renders through, and the Operator moves it can take right now. Project
+   * names and kits are looked up once per response, not once per piece —
+   * currentKit seeds a default kit on first read, so a list read would
+   * otherwise write once per row.
+   */
+  function decorator(): (piece: PieceRecord) => Record<string, unknown> {
     const names = projectNames();
-    return {
-      ...piece,
-      projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
-      kit: currentKit(piece.projectId),
-      operatorMoves: availableOperatorMoves(piece),
+    const kits = new Map<number, ReturnType<typeof currentKit>>();
+    return (piece) => {
+      let kit = kits.get(piece.projectId);
+      if (!kit) {
+        kit = currentKit(piece.projectId);
+        kits.set(piece.projectId, kit);
+      }
+      return {
+        ...piece,
+        projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
+        kit,
+        operatorMoves: availableOperatorMoves(piece),
+      };
     };
   }
 
@@ -72,19 +85,19 @@ export function pieceRouter(): Router {
   }
 
   router.get("/", (_req, res) => {
-    res.json({ pieces: listAllPieces().map(decorate) });
+    res.json({ pieces: listAllPieces().map(decorator()) });
   });
 
   // The Content Backlog and the calendar. Both read the same pieces table,
   // so they reflect a lifecycle move the moment it lands. Registered ahead
   // of /:id so the words are not read as piece ids.
   router.get("/backlog", (_req, res) => {
-    res.json({ pieces: listBacklog().map(decorate) });
+    res.json({ pieces: listBacklog().map(decorator()) });
   });
 
   router.get("/calendar", (_req, res) => {
-    const planned = listPlanned().map(decorate);
-    const days = new Map<string, ReturnType<typeof decorate>[]>();
+    const planned = listPlanned().map(decorator());
+    const days = new Map<string, Record<string, unknown>[]>();
     for (const piece of planned) {
       const day = piece.plannedDate as string;
       days.set(day, [...(days.get(day) ?? []), piece]);
@@ -158,7 +171,7 @@ export function pieceRouter(): Router {
   router.get("/:id", (req, res) => {
     const piece = pieceOr404(req, res);
     if (!piece) return;
-    res.json({ piece: decorate(piece) });
+    res.json({ piece: decorator()(piece) });
   });
 
   return router;
