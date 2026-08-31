@@ -4,7 +4,7 @@
 
 **Blocked by:** 17 prepare_change and digest approvals.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A successful apply returns a receipt and advances the snapshot revision
 - [ ] Every refusal case matches the reference transcripts
