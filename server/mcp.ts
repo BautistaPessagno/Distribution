@@ -33,6 +33,7 @@ import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { instantiateTemplate, listTemplates, saveAsTemplate } from "./templates";
 import { exportPiece, renderPreview } from "./renderer";
 import { ONBOARD_GUIDE } from "./onboard";
+import { changeSetSchema, getApproval, prepareChange } from "./project-changes";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
 import { log } from "./log";
 
@@ -288,6 +289,24 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { id: z.number() },
     },
     async ({ id }) => lintedJson((await exportPiece(sessionKey, { id })).response)
+  );
+  server.registerTool(
+    "project.prepare_change",
+    {
+      description:
+        "Phase one of a project write. Validates a Project Change Set against the pinned Project Snapshot without touching canonical project state, and returns the digest, the exact diff, the validations run, and any warnings. The Operator then approves or rejects that digest in the dashboard; poll marketingos.get_approval. No grant token is ever given to the host.",
+      inputSchema: changeSetSchema.shape,
+    },
+    async (input) => lintedJson((await prepareChange(sessionKey, input)).response)
+  );
+  server.registerTool(
+    "marketingos.get_approval",
+    {
+      description:
+        "Read the Operator's decision on a prepared change: pending, approved, rejected, or used, each with the one call to make next. Returns a status, never a token.",
+      inputSchema: { digest: z.string() },
+    },
+    async ({ digest }) => lintedJson(getApproval(sessionKey, { digest }).response)
   );
   server.registerTool(
     "project.get_snapshot",
