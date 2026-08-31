@@ -18,10 +18,11 @@ import { z } from "zod";
 import { audit } from "./audit";
 import { getDb } from "./db";
 import {
+  fetchJson,
   noProjectSelected,
   pinnedDetail,
   sessionContext,
-  snapshotStaleness,
+  staleSnapshotRefusal,
   SNAPSHOT_RESOURCES,
   type GatewayResult,
   type SnapshotResource,
@@ -66,7 +67,7 @@ export interface DiffEntry {
   after: unknown;
 }
 
-export interface PreparedChange {
+export interface PreparedChangeSet {
   digest: string;
   projectId: number;
   snapshotId: string;
@@ -98,7 +99,7 @@ interface ChangeRow {
   decided_by: string | null;
 }
 
-function rowToPrepared(row: ChangeRow): PreparedChange {
+function rowToPrepared(row: ChangeRow): PreparedChangeSet {
   return {
     digest: row.digest,
     projectId: row.project_id,
@@ -116,14 +117,14 @@ function rowToPrepared(row: ChangeRow): PreparedChange {
   };
 }
 
-export function getPreparedChange(digest: string): PreparedChange | null {
+export function getPreparedChangeSet(digest: string): PreparedChangeSet | null {
   const row = getDb().prepare("SELECT * FROM project_changes WHERE digest = ?").get(digest) as
     | ChangeRow
     | undefined;
   return row ? rowToPrepared(row) : null;
 }
 
-export function listPreparedChanges(status?: ApprovalStatus): PreparedChange[] {
+export function listPreparedChangeSets(status?: ApprovalStatus): PreparedChangeSet[] {
   const db = getDb();
   const rows = (
     status
@@ -174,16 +175,26 @@ const DEFAULT_POLICY: WritePolicy = {
  * The Connected Project decides what may be written. A project that says
  * nothing has said no: the default refuses everything, so a project domain
  * cannot become writable by omission.
+ *
+ * An outage is not a policy. A project that cannot be reached throws, so
+ * the caller reports temporarily_unavailable rather than telling the
+ * Operator to widen a write policy it never managed to read.
+ *
+ * The MVP reads three fields. A write policy also declares accepted
+ * formats, size limits, project-supplied validators, and approval classes
+ * (ticket 08); running those is deferred, and no change here pretends to
+ * have run them.
  */
 export async function readWritePolicy(projectId: number, baseUrl: string): Promise<WritePolicy> {
   const token = await projectServiceToken(projectId, "ai-host");
-  const res = await fetch(`${baseUrl}/resources/write-policy`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) return DEFAULT_POLICY;
-  const body = (await res.json()) as { data?: Partial<WritePolicy> };
-  const data = body.data ?? {};
+  const res = await fetchJson(`${baseUrl}/resources/write-policy`, token);
+  // 404 is an answer: this project domain exposes no write policy, which
+  // is a refusal, not a failure.
+  if (res.status === 404) return DEFAULT_POLICY;
+  if (res.status !== 200) {
+    throw new Error(`the project domain answered status ${res.status} for write-policy`);
+  }
+  const data = ((res.body ?? {}) as { data?: Partial<WritePolicy> }).data ?? {};
   return {
     operations: Array.isArray(data.operations) ? data.operations : [],
     editableTargets: Array.isArray(data.editableTargets) ? data.editableTargets : [],
@@ -329,7 +340,7 @@ function errResult(error: string, message: string, next: string): GatewayResult 
   return { ok: false, response: { error, message, next } };
 }
 
-function preparedPayload(prepared: PreparedChange): Record<string, unknown> {
+function preparedPayload(prepared: PreparedChangeSet): Record<string, unknown> {
   return {
     digest: prepared.digest,
     summary: prepared.summary,
@@ -362,9 +373,9 @@ export async function prepareChange(sessionKey: string, input: unknown): Promise
 
   // A change computed against a snapshot the world has moved past describes
   // a project that no longer exists. Refuse before validating anything.
-  const stale = await snapshotStaleness(
+  const stale = await staleSnapshotRefusal(
     sessionKey,
-    "write-policy",
+    [...new Set(changeSet.operations.map(targetResource))],
     "project.prepare_change",
     "Call project.get_snapshot, recompute the change, then prepare again."
   );
@@ -401,18 +412,41 @@ export async function prepareChange(sessionKey: string, input: unknown): Promise
   }
 
   const digest = changeDigest(pinned.projectId, pinned.snapshotId, changeSet);
-  const existing = getPreparedChange(digest);
+  const existing = getPreparedChangeSet(digest);
   if (existing) {
-    // The same change against the same snapshot is the same change. It
-    // addresses the approval that already exists rather than making a
-    // second one the Operator would have to review twice.
+    // A digest is derived, so the same change against the same snapshot
+    // lands here. Belt and braces on the derivation: a digest is never
+    // allowed to address another project's change.
+    if (existing.projectId !== pinned.projectId) {
+      return errResult(
+        "approval_mismatch",
+        `Digest ${digest} already names a change to a different Connected Project.`,
+        "Prepare this change with a distinct summary."
+      );
+    }
+    if (existing.status === "pending") {
+      // It addresses the approval already waiting rather than making a
+      // second one the Operator would have to review twice.
+      return {
+        ok: true,
+        response: {
+          context: sessionContext(sessionKey),
+          prepared: preparedPayload(existing),
+          approval: "required",
+          next: nextForStatus(existing),
+        },
+      };
+    }
+    // Already decided. Re-preparing it is not a preparation: the Operator
+    // said something about this exact change, and saying it again would
+    // not change their answer.
     return {
-      ok: true,
+      ok: false,
       response: {
-        context: sessionContext(sessionKey),
-        prepared: preparedPayload(existing),
-        approval: existing.status === "pending" ? "required" : existing.status,
+        error: "approval_mismatch",
+        message: `This exact change was already ${existing.status} as digest ${digest}.`,
         next: nextForStatus(existing),
+        prepared: preparedPayload(existing),
       },
     };
   }
@@ -435,7 +469,7 @@ export async function prepareChange(sessionKey: string, input: unknown): Promise
       JSON.stringify(outcome.warnings)
     );
 
-  const prepared = getPreparedChange(digest);
+  const prepared = getPreparedChangeSet(digest);
   if (!prepared) throw new Error("prepared change did not persist");
 
   audit("ai-host", "changes.prepared", {
@@ -457,7 +491,7 @@ export async function prepareChange(sessionKey: string, input: unknown): Promise
   };
 }
 
-function nextForStatus(prepared: PreparedChange): string {
+function nextForStatus(prepared: PreparedChangeSet): string {
   switch (prepared.status) {
     case "approved":
       return `project.apply_change({"digest":"${prepared.digest}"}) — exactly once.`;
@@ -488,7 +522,7 @@ export function getApproval(sessionKey: string, input: unknown): GatewayResult {
     );
   }
 
-  const prepared = getPreparedChange(parsed.data.digest);
+  const prepared = getPreparedChangeSet(parsed.data.digest);
   if (!prepared) {
     return errResult(
       "approval_mismatch",
@@ -533,12 +567,12 @@ export class ApprovalError extends Error {
  * decided: an approval that was already consumed, or already refused, is
  * not something to change one's mind about — prepare a new change.
  */
-export function decidePreparedChange(
+export function decidePreparedChangeSet(
   digest: string,
   decision: "approved" | "rejected",
   actor = "operator"
-): PreparedChange {
-  const prepared = getPreparedChange(digest);
+): PreparedChangeSet {
+  const prepared = getPreparedChangeSet(digest);
   if (!prepared) throw new ApprovalError(404, `No prepared change with digest ${digest}`);
   if (prepared.status !== "pending") {
     throw new ApprovalError(
@@ -547,15 +581,21 @@ export function decidePreparedChange(
     );
   }
 
-  getDb()
+  // The status check above is a read; this is the one that decides. Two
+  // decisions racing means exactly one row changes, and the loser is told
+  // so rather than being handed back the winner's outcome as its own.
+  const written = getDb()
     .prepare(
       `UPDATE project_changes
        SET status = ?, decided_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), decided_by = ?
        WHERE digest = ? AND status = 'pending'`
     )
     .run(decision, actor, digest);
+  if (written.changes !== 1) {
+    throw new ApprovalError(409, `Digest ${digest} was decided by someone else first`);
+  }
 
-  const updated = getPreparedChange(digest);
+  const updated = getPreparedChangeSet(digest);
   if (!updated) throw new Error("prepared change vanished while being decided");
 
   audit(actor, `changes.${decision}`, {

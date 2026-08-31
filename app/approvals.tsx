@@ -20,7 +20,7 @@ export interface DiffEntry {
   after: unknown;
 }
 
-export interface PreparedChange {
+export interface PreparedChangeSet {
   digest: string;
   projectId: number;
   projectName: string;
@@ -34,22 +34,28 @@ export interface PreparedChange {
   createdAt: string;
 }
 
-const STATUS_TAG: Record<PreparedChange["status"], string> = {
+const STATUS_TAG: Record<PreparedChangeSet["status"], string> = {
   pending: "tag-warn",
   approved: "tag-good",
   rejected: "tag-bad",
   used: "tag-info",
 };
 
+/** The changes still waiting on a person. The one definition of "waiting". */
+export function pendingOf(changes: PreparedChangeSet[] | null): PreparedChangeSet[] {
+  return (changes ?? []).filter((c) => c.status === "pending");
+}
+
 export function useApprovals() {
-  const [changes, setChanges] = useState<PreparedChange[] | null>(null);
+  const [changes, setChanges] = useState<PreparedChangeSet[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/approvals");
       if (!res.ok) throw new Error((await res.json()).error);
-      setChanges(((await res.json()) as { changes: PreparedChange[] }).changes);
+      setChanges(((await res.json()) as { changes: PreparedChangeSet[] }).changes);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -66,7 +72,7 @@ export function ChangeCard({
   change,
   onDecided,
 }: {
-  change: PreparedChange;
+  change: PreparedChangeSet;
   onDecided: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -163,10 +169,10 @@ export function ApprovalInterruption({
   changes,
   onDecided,
 }: {
-  changes: PreparedChange[] | null;
+  changes: PreparedChangeSet[] | null;
   onDecided: () => void;
 }) {
-  const pending = (changes ?? []).filter((c) => c.status === "pending");
+  const pending = pendingOf(changes);
   if (pending.length === 0) return null;
 
   return (

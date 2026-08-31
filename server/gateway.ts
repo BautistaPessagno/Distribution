@@ -158,12 +158,12 @@ export function noProjectSelected(): GatewayResult {
   );
 }
 
-interface FetchResult {
+export interface FetchResult {
   status: number;
   body: unknown;
 }
 
-async function fetchJson(url: string, token: string): Promise<FetchResult> {
+export async function fetchJson(url: string, token: string): Promise<FetchResult> {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
@@ -429,14 +429,14 @@ export async function getSnapshot(sessionKey: string): Promise<GatewayResult> {
 }
 
 /**
- * Has the world moved past the pinned snapshot? Returns null when the
- * snapshot still describes reality, and the refusal to send back when it
- * does not. Reads and two-phase writes both ask this, so a stale snapshot
- * means the same thing everywhere.
+ * The refusal to send back when the world has moved past the pinned
+ * snapshot, or null when the snapshot still describes reality. Reads and
+ * two-phase writes both ask this, so a stale snapshot means the same thing
+ * everywhere.
  */
-export async function snapshotStaleness(
+export async function staleSnapshotRefusal(
   sessionKey: string,
-  subject: string,
+  subjects: string[],
   retryCall: string,
   next: string
 ): Promise<GatewayResult | null> {
@@ -463,13 +463,14 @@ export async function snapshotStaleness(
     response: {
       error: "stale_snapshot",
       message: `Snapshot ${pinned.id} is stale; the project changed upstream.`,
-      contextGaps: [
-        {
-          resource: subject,
-          state: "stale",
-          detail: `${moved.length} change(s) landed after cursor ${pinned.cursor}.`,
-        } satisfies ContextGap,
-      ],
+      contextGaps: subjects.map(
+        (resource) =>
+          ({
+            resource,
+            state: "stale",
+            detail: `${moved.length} change(s) landed after cursor ${pinned.cursor}.`,
+          }) satisfies ContextGap
+      ),
       next,
     },
   };
@@ -491,9 +492,9 @@ export async function getResource(
     );
   }
 
-  const staleness = await snapshotStaleness(
+  const staleness = await staleSnapshotRefusal(
     sessionKey,
-    resource,
+    [resource],
     "project.get_resource",
     "Call project.get_snapshot to pin a fresh snapshot, then re-read."
   );

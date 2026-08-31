@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeCard, useApprovals } from "../approvals";
+import { ChangeCard, pendingOf, useApprovals } from "../approvals";
 import { EmptyState, Shell } from "../shell";
 
 // Operations holds the work that needs a person: Work Orders (ticket 20)
@@ -10,8 +10,8 @@ import { EmptyState, Shell } from "../shell";
 
 export default function OperationsPage() {
   const { changes, error, reload } = useApprovals();
+  const pending = pendingOf(changes);
   const decided = (changes ?? []).filter((c) => c.status !== "pending");
-  const pending = (changes ?? []).filter((c) => c.status === "pending");
 
   return (
     <Shell>

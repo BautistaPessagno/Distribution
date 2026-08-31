@@ -34,9 +34,17 @@ const STUB_DATA: Record<RequiredResource, { state: "ok" | "empty"; data: unknown
   },
   claims: { state: "empty", data: [] },
   assets: { state: "empty", data: [] },
+  // Narrow on purpose, and non-empty on purpose: the stub exists so the
+  // two-phase write loop can be walked locally, and a policy of "nothing"
+  // would make that impossible to demonstrate. Brand voice is editable;
+  // everything else this project holds is protected.
   "write-policy": {
     state: "ok",
-    data: { operations: [], editableTargets: [], protectedResources: ["*"] },
+    data: {
+      operations: ["set_field"],
+      editableTargets: ["brand"],
+      protectedResources: ["profile", "claims", "assets", "audiences", "write-policy"],
+    },
   },
 };
 

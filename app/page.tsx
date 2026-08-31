@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ApprovalInterruption, useApprovals } from "./approvals";
+import { ApprovalInterruption, pendingOf, useApprovals } from "./approvals";
 import { PieceMoves } from "./piece-moves";
 import { EmptyState, Shell } from "./shell";
 
@@ -76,7 +76,7 @@ export default function Home() {
     days.length === 0 &&
     backlog !== null &&
     backlog.length === 0 &&
-    (approvals.changes ?? []).every((c) => c.status !== "pending");
+    pendingOf(approvals.changes).length === 0;
 
   return (
     <Shell>

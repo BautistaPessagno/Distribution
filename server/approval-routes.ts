@@ -4,11 +4,11 @@ import { sessionTokenFrom } from "./auth-routes";
 import { log } from "./log";
 import {
   ApprovalError,
-  decidePreparedChange,
-  listPreparedChanges,
+  decidePreparedChangeSet,
+  listPreparedChangeSets,
   renderDiff,
   type ApprovalStatus,
-  type PreparedChange,
+  type PreparedChangeSet,
 } from "./project-changes";
 import { listProjects } from "./projects";
 
@@ -28,36 +28,42 @@ export function approvalRouter(): Router {
     next();
   });
 
-  function decorate(prepared: PreparedChange, names: Map<number, string>) {
-    return {
+  /** One project-name lookup per response, not one per change. */
+  function decorator(): (prepared: PreparedChangeSet) => Record<string, unknown> {
+    const names = new Map(listProjects().map((p) => [p.id, p.name]));
+    return (prepared) => ({
       ...prepared,
       projectName: names.get(prepared.projectId) ?? `project #${prepared.projectId}`,
       diffText: renderDiff(prepared.diff),
-    };
+    });
   }
 
+  const STATUSES: readonly ApprovalStatus[] = ["pending", "approved", "rejected", "used"];
+
   router.get("/", (req, res) => {
-    const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const names = new Map(listProjects().map((p) => [p.id, p.name]));
-    const changes = listPreparedChanges(status as ApprovalStatus | undefined);
+    const asked = typeof req.query.status === "string" ? req.query.status : undefined;
+    if (asked !== undefined && !STATUSES.includes(asked as ApprovalStatus)) {
+      res.status(400).json({ error: `status must be one of ${STATUSES.join(", ")}` });
+      return;
+    }
+    const changes = listPreparedChangeSets(asked as ApprovalStatus | undefined);
     res.json({
       note: "A prepared change is an interruption, not a step. Nothing reaches a Connected Project until you approve the exact diff below.",
       pending: changes.filter((c) => c.status === "pending").length,
-      changes: changes.map((c) => decorate(c, names)),
+      changes: changes.map(decorator()),
     });
   });
 
   for (const decision of ["approve", "reject"] as const) {
     router.post(`/:digest/${decision}`, (req, res) => {
       try {
-        const prepared = decidePreparedChange(
+        const prepared = decidePreparedChangeSet(
           req.params.digest,
           decision === "approve" ? "approved" : "rejected",
           "operator"
         );
-        const names = new Map(listProjects().map((p) => [p.id, p.name]));
         res.json({
-          change: decorate(prepared, names),
+          change: decorator()(prepared),
           note:
             decision === "approve"
               ? `Approved digest ${prepared.digest}. The approval is single-use and bound to this digest; no token goes to the AI Host.`

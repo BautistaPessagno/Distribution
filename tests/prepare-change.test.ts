@@ -24,9 +24,9 @@ import { getDb } from "../server/db";
 import { selectProject } from "../server/gateway";
 import {
   changeDigest,
-  decidePreparedChange,
+  decidePreparedChangeSet,
   getApproval,
-  getPreparedChange,
+  getPreparedChangeSet,
   prepareChange,
   renderDiff,
   validateChangeSet,
@@ -47,6 +47,7 @@ import { stubVerifyAgainstProjects } from "../server/stub-project";
 // A project domain that can be made to move underneath a pinned snapshot,
 // and whose write policy the test controls.
 let cursor = 0;
+let policyFails = false;
 let policy: WritePolicy = {
   operations: ["set_field", "add_claim"],
   editableTargets: ["brand", "claims"],
@@ -69,6 +70,7 @@ function domain() {
     resource(name: RequiredResource): ResourceEnvelope {
       if (name === "brand") return { resource: name, state: "ok", version: 1, data: BRAND };
       if (name === "write-policy") {
+        if (policyFails) throw new Error("the write policy is temporarily unreadable");
         return { resource: name, state: "ok", version: 1, data: policy };
       }
       return { resource: name, state: "ok", version: 1, data: {} };
@@ -88,12 +90,14 @@ function domain() {
 const app = express();
 app.use("/keepanalog", domain());
 app.use("/vinylos", domain());
+app.use("/flaky", domain());
 app.use("/api/approvals", approvalRouter());
 const server = app.listen(0);
 const port = (server.address() as AddressInfo).port;
 
 const SESSION = "prepare-session";
 const OTHER_SESSION = "other-prepare-session";
+const FLAKY_SESSION = "flaky-prepare-session";
 let projectId = 0;
 let cookie = "";
 
@@ -132,8 +136,8 @@ async function upstreamChange(): Promise<void> {
   cursor += 1;
 }
 
-async function repin(session = SESSION): Promise<void> {
-  assert.equal((await selectProject(session, "KeepAnalog")).ok, true);
+async function repin(project = "KeepAnalog", session = SESSION): Promise<void> {
+  assert.equal((await selectProject(session, project)).ok, true);
 }
 
 test.before(async () => {
@@ -143,6 +147,7 @@ test.before(async () => {
     "test"
   );
   await registerProject("VinylOS", `http://127.0.0.1:${port}/vinylos`, "test");
+  await registerProject("FlakyPolicy", `http://127.0.0.1:${port}/flaky`, "test");
   projectId = keep.project.id;
   assert.equal((await selectProject(SESSION, "KeepAnalog")).ok, true);
   assert.equal((await selectProject(OTHER_SESSION, "VinylOS")).ok, true);
@@ -207,7 +212,7 @@ test("preparing changes nothing canonical, and the same change addresses the sam
     headers: { Authorization: `Bearer nope` },
   });
   assert.equal(brand.status, 401);
-  assert.equal(getPreparedChange(digest)?.status, "pending");
+  assert.equal(getPreparedChangeSet(digest)?.status, "pending");
 });
 
 test("the digest names one change against one snapshot of one project", () => {
@@ -304,10 +309,10 @@ test("a decision is final: an already-decided digest cannot be decided again", a
     method: "POST",
   });
   assert.equal(flipped.status, 409);
-  assert.equal(getPreparedChange(digest)?.status, "approved");
+  assert.equal(getPreparedChangeSet(digest)?.status, "approved");
 
   assert.equal((await api(`/api/approvals/chg-nope/approve`, { method: "POST" })).status, 404);
-  assert.throws(() => decidePreparedChange("chg-nope", "approved"), /No prepared change/);
+  assert.throws(() => decidePreparedChangeSet("chg-nope", "approved"), /No prepared change/);
 });
 
 test("get_approval refuses an unknown digest and one prepared for another project", async () => {
@@ -347,7 +352,7 @@ test("a stale snapshot refuses preparation, naming the recovery path", async () 
   // Nothing was prepared: a change against a project that has moved is not
   // a change anyone should be asked to approve.
   const digest = changeDigest(projectId, "any", changeSet());
-  assert.equal(getPreparedChange(digest), null);
+  assert.equal(getPreparedChangeSet(digest), null);
 
   // Recompute against a fresh snapshot and it prepares.
   await repin();
@@ -456,4 +461,105 @@ test("the rendered diff shows one before and one after per changed path", () => 
       '+ {"text":"t"}',
     ].join("\n")
   );
+});
+
+// ---------------------------------------------------------------------------
+// What the review of this branch turned up
+
+test("a decided change does not come back as a successful preparation", async () => {
+  await repin();
+  const prepared = await prepareChange(SESSION, changeSet({ summary: "Decided already" }));
+  const digest = (prepared.response.prepared as { digest: string }).digest;
+  assert.equal((await api(`/api/approvals/${digest}/reject`, { method: "POST" })).status, 200);
+
+  // The Operator said no to this exact change. Sending it again is not a
+  // preparation, and must not read as one.
+  const again = await prepareChange(SESSION, changeSet({ summary: "Decided already" }));
+  assert.equal(again.ok, false);
+  assert.equal(again.response.error, "approval_mismatch");
+  assert.match(String(again.response.message), /already rejected/);
+  assert.equal(again.response.next, "Rejected; revise and prepare a new change.");
+
+  // A genuinely different change prepares, as it should.
+  const revised = await prepareChange(SESSION, changeSet({ summary: "Decided already, revised" }));
+  assert.equal(revised.ok, true);
+});
+
+test("an unreachable write policy is an outage, not a refusal to write", async () => {
+  // A project that answers 503 has told us nothing about its policy. Saying
+  // "this target is protected" would be inventing a policy we never read,
+  // and would send the Operator off to widen something that is fine.
+  await repin("FlakyPolicy", FLAKY_SESSION);
+  policyFails = true;
+  try {
+    const result = await prepareChange(FLAKY_SESSION, changeSet());
+    assert.equal(result.ok, false);
+    assert.equal(result.response.error, "temporarily_unavailable");
+    assert.match(String(result.response.message), /write-policy/);
+    assert.match(String(result.response.next), /Retry project.prepare_change/);
+  } finally {
+    policyFails = false;
+  }
+
+  // With the project answering again, the same change prepares.
+  const recovered = await prepareChange(FLAKY_SESSION, changeSet({ summary: "After recovery" }));
+  assert.equal(recovered.ok, true, JSON.stringify(recovered.response));
+});
+
+test("the stale refusal names the resources the change would have touched", async () => {
+  await repin();
+  await upstreamChange();
+
+  const result = await prepareChange(
+    SESSION,
+    changeSet({
+      summary: "Touches two resources",
+      operations: [
+        { op: "set_field", resource: "brand", path: "voice", value: "x" },
+        { op: "add_claim", text: "t", evidence: "e" },
+      ],
+    })
+  );
+  assert.equal(result.response.error, "stale_snapshot");
+  const gaps = result.response.contextGaps as { resource: string; state: string }[];
+  assert.deepEqual(gaps.map((g) => g.resource).sort(), ["brand", "claims"]);
+  assert.ok(gaps.every((g) => g.state === "stale"));
+
+  await repin();
+});
+
+test("the approvals list refuses a status it does not recognise", async () => {
+  assert.equal((await api("/api/approvals?status=pending")).status, 200);
+  const bad = await api<{ error: string }>("/api/approvals?status=whatever");
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /status must be one of/);
+});
+
+test("the dev stub can actually walk the loop it exists to demonstrate", async () => {
+  // A stub whose write policy permits nothing cannot show the two-phase
+  // write working at all, which is the one thing it is for.
+  const { createStubProjectRouter } = await import("../server/stub-project");
+  const stubApp = express();
+  stubApp.use("/stub", createStubProjectRouter(stubVerifyAgainstProjects(isActiveProjectTokenHash)));
+  const stubServer = stubApp.listen(0);
+  try {
+    const stubPort = (stubServer.address() as AddressInfo).port;
+    await registerProject("DevStub", `http://127.0.0.1:${stubPort}/stub`, "test");
+    const STUB_SESSION = "stub-session";
+    assert.equal((await selectProject(STUB_SESSION, "DevStub")).ok, true);
+
+    const permitted = await prepareChange(STUB_SESSION, {
+      summary: "Sharpen the stub's voice",
+      operations: [{ op: "set_field", resource: "brand", path: "voice", value: "plain and warm" }],
+    });
+    assert.equal(permitted.ok, true, JSON.stringify(permitted.response));
+
+    const refused = await prepareChange(STUB_SESSION, {
+      summary: "Touch the profile",
+      operations: [{ op: "set_field", resource: "profile", path: "product", value: "x" }],
+    });
+    assert.equal(refused.response.error, "protected_target");
+  } finally {
+    stubServer.close();
+  }
 });
