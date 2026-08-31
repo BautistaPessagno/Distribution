@@ -25,6 +25,7 @@ import { getDb } from "./db";
 import { currentKit, kitAtVersion, type BrandKit } from "./brand-kit";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
+import { exportRefusal, markExported } from "./piece-lifecycle";
 import { pieceDocSchema, type PieceDoc, type PieceRecord } from "./pieces";
 import { FORMAT_DIMENSIONS, SlideView, type BrandTokens } from "../render/piece-slide";
 
@@ -188,7 +189,23 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
 
   const scoped = scopedPiece(sessionKey, parsed.data.id);
   if ("error" in scoped) return scoped.error;
-  const { piece } = scoped;
+
+  const result = await exportPieceRecord(scoped.piece, "ai-host");
+  if (!result.ok) return result;
+  return { ok: true, response: { context: sessionContext(sessionKey), ...result.response } };
+}
+
+/**
+ * Produce the export bundle for one piece. Export is the step that makes an
+ * artifact for the outside world, so the lifecycle decides whether it may
+ * happen at all (ticket 14) before a single pixel is rendered.
+ */
+export async function exportPieceRecord(
+  piece: PieceRecord,
+  actor: string
+): Promise<GatewayResult> {
+  const refusal = exportRefusal(piece);
+  if (refusal) return refusal;
 
   const doc = docAtVersion(piece.id, piece.docVersion) ?? piece.doc;
   const kit = exportKit(piece);
@@ -231,7 +248,8 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
     )
     .run(piece.id, piece.docVersion, kit.version, path.join("data", "exports", bundleName), JSON.stringify(manifest));
 
-  audit("ai-host", "pieces.exported", {
+  const exported = markExported(piece, actor);
+  audit(actor, "pieces.exported", {
     pieceId: piece.id,
     projectId: piece.projectId,
     docVersion: piece.docVersion,
@@ -243,8 +261,14 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
   return {
     ok: true,
     response: {
-      context: sessionContext(sessionKey),
-      piece: { id: piece.id, title: piece.title, docVersion: piece.docVersion },
+      piece: {
+        id: exported.id,
+        title: exported.title,
+        status: exported.status,
+        docVersion: exported.docVersion,
+        pinnedKitVersion: exported.pinnedKitVersion,
+        plannedDate: exported.plannedDate,
+      },
       bundle: { name: bundleName, path: path.join("data", "exports", bundleName), manifest },
     },
   };

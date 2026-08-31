@@ -23,9 +23,12 @@ import {
 } from "./piece-edits";
 import {
   approvalStatus,
+  planPieceForHost,
+  recordPieceOutcome,
   reopen,
   startDrafting,
   submitForReview,
+  unplan,
 } from "./piece-lifecycle";
 import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { exportPiece, renderPreview } from "./renderer";
@@ -173,6 +176,33 @@ function buildServer(sessionKey: string): McpServer {
     async ({ id }) => lintedJson(reopen(sessionKey, { id }).response)
   );
   server.registerTool(
+    "marketingos.plan_piece",
+    {
+      description:
+        "Give an approved Creative Piece a planned date (YYYY-MM-DD). A planned date is a plan the Operator intends to act on; nothing publishes automatically, and only planned pieces can be exported.",
+      inputSchema: { id: z.number(), date: z.string() },
+    },
+    async ({ id, date }) => lintedJson(planPieceForHost(sessionKey, { id, date }).response)
+  );
+  server.registerTool(
+    "marketingos.unplan_piece",
+    {
+      description:
+        "Take the planned date off a Creative Piece, returning it to approved and undated. The approval still stands.",
+      inputSchema: { id: z.number() },
+    },
+    async ({ id }) => lintedJson(unplan(sessionKey, { id }).response)
+  );
+  server.registerTool(
+    "marketingos.record_outcome",
+    {
+      description:
+        "Record what was observed once an exported Creative Piece had run, moving it to measured.",
+      inputSchema: { id: z.number(), outcome: z.string() },
+    },
+    async ({ id, outcome }) => lintedJson(recordPieceOutcome(sessionKey, { id, outcome }).response)
+  );
+  server.registerTool(
     "marketingos.get_brand_kit",
     {
       description:
@@ -219,7 +249,7 @@ function buildServer(sessionKey: string): McpServer {
     "marketingos.export_piece",
     {
       description:
-        "Export a Creative Piece: render one PNG per slide in headless Chromium from the shared renderer components, plus a captions file, into a bundle whose manifest names every file and the doc and kit versions it was rendered from.",
+        "Export a planned Creative Piece: render one PNG per slide in headless Chromium from the shared renderer components, plus a captions file, into a bundle whose manifest names every file and the doc and kit versions it was rendered from. Export happens only from planned, renders through the kit version approval pinned, and refuses while the piece is brand-outdated.",
       inputSchema: { id: z.number() },
     },
     async ({ id }) => lintedJson((await exportPiece(sessionKey, { id })).response)

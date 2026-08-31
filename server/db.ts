@@ -213,6 +213,7 @@ function migrate(d: Database.Database): void {
   addColumn(d, "pieces", "pinned_kit_version", "INTEGER");
   addColumn(d, "pieces", "brand_outdated", "INTEGER NOT NULL DEFAULT 0");
   addColumn(d, "pieces", "planned_date", "TEXT");
+  addColumn(d, "pieces", "outcome", "TEXT");
 
   d.prepare(
     `INSERT INTO meta (key, value) VALUES ('schema_version', ?)

@@ -31,6 +31,10 @@ export const ONBOARD_GUIDE = {
       "What stands between a piece and approval: brand errors and [NEED: ...] tokens block; quality findings never do.",
     "marketingos.reopen_piece":
       "Reopen a piece in review, approved, or planned back to drafting. Approval and the planned date are cleared.",
+    "marketingos.plan_piece":
+      "Give an approved piece a planned date. A plan, never a publishing queue; only planned pieces export.",
+    "marketingos.unplan_piece": "Return a planned piece to approved and undated.",
+    "marketingos.record_outcome": "Record what an exported piece did, moving it to measured.",
     "marketingos.get_brand_kit":
       "Read the selected project's Brand Kit: the versioned token table pieces reference. Pieces hold token names, never copied values.",
     "marketingos.check_brand":

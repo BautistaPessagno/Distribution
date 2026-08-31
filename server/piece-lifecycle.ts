@@ -82,7 +82,11 @@ type ApprovalWrite =
   /** Approval or re-approval: pin this kit version and clear the flag. */
   | { kind: "pin"; kitVersion: number }
   /** Reopen: the approval and the plan it carried are gone. */
-  | { kind: "clear" };
+  | { kind: "clear" }
+  /** Plan or unplan: set or drop the date, touching nothing else. */
+  | { kind: "plan"; date: string | null }
+  /** Record what was observed once the piece had run. */
+  | { kind: "outcome"; note: string };
 
 function writeStatus(
   piece: PieceRecord,
@@ -96,6 +100,12 @@ function writeStatus(
     values.push(write.kitVersion);
   } else if (write.kind === "clear") {
     assignments.push("pinned_kit_version = NULL", "brand_outdated = 0", "planned_date = NULL");
+  } else if (write.kind === "plan") {
+    assignments.push("planned_date = ?");
+    values.push(write.date);
+  } else if (write.kind === "outcome") {
+    assignments.push("outcome = ?");
+    values.push(write.note);
   }
   getDb()
     .prepare(`UPDATE pieces SET ${assignments.join(", ")} WHERE id = ?`)
@@ -166,6 +176,7 @@ function lifecycleSummary(piece: PieceRecord): Record<string, unknown> {
     pinnedKitVersion: piece.pinnedKitVersion,
     brandOutdated: piece.brandOutdated,
     plannedDate: piece.plannedDate,
+    outcome: piece.outcome,
   };
 }
 
@@ -177,6 +188,7 @@ function lifecycleResponse(piece: PieceRecord, note: string): GatewayResult {
       note,
       // Reported, never enforced: heuristics advise.
       qualityFindings: qualityReport(piece.doc, piece.docVersion).findings,
+      availableMoves: availableOperatorMoves(piece),
     },
   };
 }
@@ -289,7 +301,15 @@ export function reopenPiece(piece: PieceRecord, actor: string): GatewayResult {
 }
 
 /** The Operator moves this piece can take right now, in the order Studio shows them. */
-export const OPERATOR_MOVES = ["approve", "request-changes", "reapprove", "reopen"] as const;
+export const OPERATOR_MOVES = [
+  "approve",
+  "request-changes",
+  "reapprove",
+  "plan",
+  "unplan",
+  "export",
+  "reopen",
+] as const;
 export type OperatorMove = (typeof OPERATOR_MOVES)[number];
 
 export function availableOperatorMoves(piece: PieceRecord): OperatorMove[] {
@@ -300,10 +320,102 @@ export function availableOperatorMoves(piece: PieceRecord): OperatorMove[] {
         return piece.status === "review";
       case "reapprove":
         return piece.brandOutdated;
+      case "plan":
+        return piece.status === "approved";
+      case "unplan":
+        return piece.status === "planned";
+      case "export":
+        return piece.status === "planned";
       case "reopen":
         return REOPENABLE_STATUSES.includes(piece.status);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Planning, export readiness, and the recorded outcome (ticket 14)
+
+// A planned date is an ISO calendar day. It says when the Operator intends
+// to do the work; nothing anywhere publishes on it.
+const PLANNED_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isCalendarDate(value: string): boolean {
+  if (!PLANNED_DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+export function planPiece(piece: PieceRecord, date: unknown, actor: string): GatewayResult {
+  if (piece.status !== "approved") return wrongStatus(piece, "Planning a date", "approved");
+  if (typeof date !== "string" || !isCalendarDate(date)) {
+    return errResult(
+      "invalid_date",
+      `"${String(date)}" is not a calendar date.`,
+      "Pass a date as YYYY-MM-DD. A planned date is a plan; nothing publishes on it."
+    );
+  }
+  const updated = writeStatus(piece, "planned", { kind: "plan", date });
+  audit(actor, "pieces.planned", { pieceId: piece.id, date });
+  return lifecycleResponse(
+    updated,
+    `"${piece.title}" planned for ${date}. A planned date is a plan; nothing publishes automatically.`
+  );
+}
+
+export function unplanPiece(piece: PieceRecord, actor: string): GatewayResult {
+  if (piece.status !== "planned") return wrongStatus(piece, "Unplanning", "planned");
+  const updated = writeStatus(piece, "approved", { kind: "plan", date: null });
+  audit(actor, "pieces.unplanned", { pieceId: piece.id });
+  return lifecycleResponse(
+    updated,
+    `"${piece.title}" unplanned; back to approved and undated. The approval still stands.`
+  );
+}
+
+/**
+ * Why this piece cannot be exported, or null when it can. Export is the one
+ * step that produces an artifact for the outside world, so it happens only
+ * from planned and only while the approved rendering is still current.
+ */
+export function exportRefusal(piece: PieceRecord): GatewayResult | null {
+  if (piece.status !== "planned") {
+    return errResult(
+      "not_exportable",
+      `Export happens from planned. "${piece.title}" is ${piece.status}.`,
+      piece.status === "approved"
+        ? "Give the piece a planned date first with marketingos.plan_piece."
+        : "Take the piece through review and approval, then plan it."
+    );
+  }
+  if (piece.brandOutdated) {
+    return errResult(
+      "brand_outdated",
+      `Export refused: the Brand Kit changed after "${piece.title}" was approved against v${piece.pinnedKitVersion}. Approval means the Operator saw that exact rendering.`,
+      "Re-approve the piece so the Operator sees the current rendering, then export."
+    );
+  }
+  return null;
+}
+
+/** Called by the exporter once a bundle exists. */
+export function markExported(piece: PieceRecord, actor: string): PieceRecord {
+  const updated = writeStatus(piece, "exported", { kind: "keep" });
+  audit(actor, "pieces.export_recorded", { pieceId: piece.id, docVersion: piece.docVersion });
+  return updated;
+}
+
+export function recordOutcome(piece: PieceRecord, note: unknown, actor: string): GatewayResult {
+  if (piece.status !== "exported") return wrongStatus(piece, "Recording an outcome", "exported");
+  if (typeof note !== "string" || note.trim() === "") {
+    return errResult(
+      "invalid_outcome",
+      "An outcome records what was observed.",
+      "Pass a short note describing what happened when the piece ran."
+    );
+  }
+  const updated = writeStatus(piece, "measured", { kind: "outcome", note: note.trim() });
+  audit(actor, "pieces.measured", { pieceId: piece.id });
+  return lifecycleResponse(updated, `Outcome recorded for "${piece.title}".`);
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +461,42 @@ export function startDrafting(sessionKey: string, input: unknown): GatewayResult
 
 export function submitForReview(sessionKey: string, input: unknown): GatewayResult {
   return hostTransition(sessionKey, input, "marketingos.submit_for_review", submitPieceForReview);
+}
+
+export function planPieceForHost(sessionKey: string, input: unknown): GatewayResult {
+  const parsed = z.object({ id: z.number().int(), date: z.string() }).safeParse(input);
+  if (!parsed.success) {
+    return errResult(
+      "invalid_transition",
+      "Planning names the piece id and the date.",
+      "Call marketingos.plan_piece with {id, date} where date is YYYY-MM-DD."
+    );
+  }
+  const scoped = scopedPiece(sessionKey, parsed.data.id);
+  if ("error" in scoped) return scoped.error;
+  const result = planPiece(scoped.piece, parsed.data.date, "ai-host");
+  if (!result.ok) return result;
+  return { ok: true, response: { context: sessionContext(sessionKey), ...result.response } };
+}
+
+export function unplan(sessionKey: string, input: unknown): GatewayResult {
+  return hostTransition(sessionKey, input, "marketingos.unplan_piece", unplanPiece);
+}
+
+export function recordPieceOutcome(sessionKey: string, input: unknown): GatewayResult {
+  const parsed = z.object({ id: z.number().int(), outcome: z.string() }).safeParse(input);
+  if (!parsed.success) {
+    return errResult(
+      "invalid_transition",
+      "Recording an outcome names the piece id and what was observed.",
+      "Call marketingos.record_outcome with {id, outcome}."
+    );
+  }
+  const scoped = scopedPiece(sessionKey, parsed.data.id);
+  if ("error" in scoped) return scoped.error;
+  const result = recordOutcome(scoped.piece, parsed.data.outcome, "ai-host");
+  if (!result.ok) return result;
+  return { ok: true, response: { context: sessionContext(sessionKey), ...result.response } };
 }
 
 // Reopening is not undoing an approval on the Operator's behalf: it moves

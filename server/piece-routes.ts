@@ -2,18 +2,29 @@ import express, { type Request, type Response, type Router } from "express";
 import { validateSession } from "./auth";
 import { sessionTokenFrom } from "./auth-routes";
 import { currentKit } from "./brand-kit";
+import { log } from "./log";
+import type { GatewayResult } from "./gateway";
 import { reportsForPiece } from "./checks";
 import { listVersionsForPiece } from "./piece-edits";
 import {
   approvalBlockers,
   approvePiece,
   availableOperatorMoves,
+  planPiece,
   reapprovePiece,
   reopenPiece,
   requestPieceChanges,
+  unplanPiece,
   type OperatorMove,
 } from "./piece-lifecycle";
-import { getPieceById, listAllPieces, type PieceRecord } from "./pieces";
+import { exportPieceRecord } from "./renderer";
+import {
+  getPieceById,
+  listAllPieces,
+  listBacklog,
+  listPlanned,
+  type PieceRecord,
+} from "./pieces";
 import { listProjects } from "./projects";
 
 // Operator surface for Creative Pieces: Studio lists every piece across
@@ -34,6 +45,18 @@ export function pieceRouter(): Router {
     return new Map(listProjects().map((p) => [p.id, p.name]));
   }
 
+  // Everything the dashboard needs to paint a piece: its project, the kit it
+  // renders through, and the Operator moves it can take right now.
+  function decorate(piece: PieceRecord) {
+    const names = projectNames();
+    return {
+      ...piece,
+      projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
+      kit: currentKit(piece.projectId),
+      operatorMoves: availableOperatorMoves(piece),
+    };
+  }
+
   function pieceOr404(req: Request, res: Response) {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -49,25 +72,26 @@ export function pieceRouter(): Router {
   }
 
   router.get("/", (_req, res) => {
-    const names = projectNames();
-    // Pieces hold token references; the kit holds the values. Studio needs
-    // both to paint a piece, and a kit change repaints it with no document
-    // change at all.
-    const kits = new Map<number, ReturnType<typeof currentKit>>();
+    res.json({ pieces: listAllPieces().map(decorate) });
+  });
+
+  // The Content Backlog and the calendar. Both read the same pieces table,
+  // so they reflect a lifecycle move the moment it lands. Registered ahead
+  // of /:id so the words are not read as piece ids.
+  router.get("/backlog", (_req, res) => {
+    res.json({ pieces: listBacklog().map(decorate) });
+  });
+
+  router.get("/calendar", (_req, res) => {
+    const planned = listPlanned().map(decorate);
+    const days = new Map<string, ReturnType<typeof decorate>[]>();
+    for (const piece of planned) {
+      const day = piece.plannedDate as string;
+      days.set(day, [...(days.get(day) ?? []), piece]);
+    }
     res.json({
-      pieces: listAllPieces().map((piece) => {
-        let kit = kits.get(piece.projectId);
-        if (!kit) {
-          kit = currentKit(piece.projectId);
-          kits.set(piece.projectId, kit);
-        }
-        return {
-          ...piece,
-          projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
-          kit,
-          operatorMoves: availableOperatorMoves(piece),
-        };
-      }),
+      note: "A planned date is a plan. Nothing on this calendar publishes automatically.",
+      days: [...days.entries()].map(([date, pieces]) => ({ date, pieces })),
     });
   });
 
@@ -99,7 +123,7 @@ export function pieceRouter(): Router {
   // rules live in one place instead of being re-derived client-side.
   const MOVE_HANDLERS: Record<
     OperatorMove,
-    (piece: PieceRecord, req: Request) => ReturnType<typeof approvePiece>
+    (piece: PieceRecord, req: Request) => GatewayResult | Promise<GatewayResult>
   > = {
     approve: (piece) => approvePiece(piece, "operator"),
     "request-changes": (piece, req) => {
@@ -107,30 +131,34 @@ export function pieceRouter(): Router {
       return requestPieceChanges(piece, "operator", reason || undefined);
     },
     reapprove: (piece) => reapprovePiece(piece, "operator"),
+    plan: (piece, req) => planPiece(piece, req.body?.date, "operator"),
+    unplan: (piece) => unplanPiece(piece, "operator"),
+    export: (piece) => exportPieceRecord(piece, "operator"),
     reopen: (piece) => reopenPiece(piece, "operator"),
   };
 
   for (const [path, move] of Object.entries(MOVE_HANDLERS)) {
-    router.post(`/:id/${path}`, (req, res) => {
+    router.post(`/:id/${path}`, async (req, res) => {
       const piece = pieceOr404(req, res);
       if (!piece) return;
-      const result = move(piece, req);
-      res.status(result.ok ? 200 : 409).json(result.response);
+      try {
+        const result = await move(piece, req);
+        res.status(result.ok ? 200 : 409).json(result.response);
+      } catch (err) {
+        log("error", "piece move failed", {
+          move: path,
+          pieceId: piece.id,
+          error: err instanceof Error ? (err.stack ?? err.message) : String(err),
+        });
+        res.status(500).json({ error: "Internal error" });
+      }
     });
   }
 
   router.get("/:id", (req, res) => {
     const piece = pieceOr404(req, res);
     if (!piece) return;
-    const names = projectNames();
-    res.json({
-      piece: {
-        ...piece,
-        projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
-        operatorMoves: availableOperatorMoves(piece),
-      },
-      kit: currentKit(piece.projectId),
-    });
+    res.json({ piece: decorate(piece) });
   });
 
   return router;

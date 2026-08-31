@@ -29,6 +29,7 @@ import {
   approvalStatus,
   approvePiece,
   availableOperatorMoves,
+  planPiece,
   needTokens,
   reapprovePiece,
   reopen,
@@ -621,11 +622,21 @@ test("Studio is told which Operator moves apply, and the list follows the status
     "reopen",
   ]);
 
+  // Approved: a date can go on, and the piece can still be reopened.
   assert.equal(approvePiece(reload(piece.id), "operator").ok, true);
-  assert.deepEqual(availableOperatorMoves(reload(piece.id)), ["reopen"]);
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), ["plan", "reopen"]);
+
+  // Planned: the date can come off, and the bundle can be exported.
+  assert.equal(planPiece(reload(piece.id), "2026-09-05", "operator").ok, true);
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), ["unplan", "export", "reopen"]);
 
   updateKit(projectId, { tokens: { "brand.accent": "#334455" } }, "operator");
-  assert.deepEqual(availableOperatorMoves(reload(piece.id)), ["reapprove", "reopen"]);
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), [
+    "reapprove",
+    "unplan",
+    "export",
+    "reopen",
+  ]);
 
   updateKit(
     projectId,
