@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 Dashboard shell and design tokens, 07 Session ritual and Project Snapshots.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A host creates a piece bound to the current snapshot; the Operator sees it in Studio
 - [ ] Cross-project piece access is refused
