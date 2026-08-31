@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 Secrets store and audit trail, 04 Dashboard shell and design tokens.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A slot walks requested to ready only when all six checklist items hold evidence
 - [ ] Credentials exist only as custody references; a test proves none leak into any surface
