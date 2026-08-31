@@ -163,10 +163,27 @@ export interface FetchResult {
   body: unknown;
 }
 
-export async function fetchJson(url: string, token: string): Promise<FetchResult> {
+export interface FetchOptions {
+  method?: "GET" | "POST";
+  body?: unknown;
+  timeoutMs?: number;
+}
+
+export async function fetchJson(
+  url: string,
+  token: string,
+  options: FetchOptions = {}
+): Promise<FetchResult> {
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
+    method: options.method ?? "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    // A write is allowed longer than a read: the project is doing work, not
+    // answering from memory.
+    signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
   });
   let body: unknown = null;
   try {

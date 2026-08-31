@@ -74,6 +74,12 @@ export interface ChangesPage {
  * The result is what a Write Receipt is made of: how many operations went
  * in, the resulting version of every resource that moved, and the change
  * cursor afterwards.
+ *
+ * **Apply must be idempotent on the digest.** MarketingOS consumes an
+ * approval before calling this, and a network failure afterwards is
+ * indistinguishable from one before it — so a project domain that sees the
+ * same digest twice must return the first result rather than applying the
+ * operations again.
  */
 export interface ApplyRequest {
   digest: string;
@@ -95,11 +101,18 @@ export interface ProjectDomainImpl {
    * Optional. A project domain that does not implement this accepts no
    * writes at all, which is the same thing its write policy should say.
    */
-  apply?(request: ApplyRequest): ApplyResult;
+  apply?(request: ApplyRequest): ApplyResult | Promise<ApplyResult>;
 }
 
 function sendError(res: Response, status: number, error: ProjectError): void {
   res.status(status).json({ error });
+}
+
+/** A refusal the project domain means, as opposed to something that broke. */
+export function isProjectError(err: unknown): err is ProjectError {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as Partial<ProjectError>;
+  return typeof e.code === "string" && typeof e.message === "string";
 }
 
 function bearerToken(req: Request): string | null {
@@ -157,7 +170,27 @@ export function createProjectDomainRouter(impl: ProjectDomainImpl): Router {
     res.json(impl.resource(name as RequiredResource));
   });
 
-  router.post("/apply", express.json({ limit: "4mb" }), (req, res) => {
+  // A change set is control JSON, not payload: the operations name fields
+  // and values, and an asset arrives through its own surface.
+  const applyBody = express.json({ limit: "256kb" });
+
+  router.post("/apply", (req, res, next) => {
+    applyBody(req, res, (err) => {
+      if (!err) {
+        next();
+        return;
+      }
+      // Even a body that never parsed answers in this contract's shape.
+      sendError(res, 413, {
+        code: "invalid_schema",
+        message: "The change set is larger than this endpoint accepts",
+        retryable: false,
+        recovery: "Split the change into smaller Project Change Sets",
+      });
+    });
+  });
+
+  router.post("/apply", async (req, res) => {
     if (!impl.apply) {
       sendError(res, 404, {
         code: "unsupported_capability",
@@ -179,13 +212,19 @@ export function createProjectDomainRouter(impl: ProjectDomainImpl): Router {
       return;
     }
     try {
-      res.json(impl.apply({ digest, operations }));
+      res.json(await impl.apply({ digest, operations }));
     } catch (err) {
-      sendError(res, 422, {
-        code: "validation_failed",
+      // A refusal the project means is a ProjectError it threw; anything
+      // else is a fault, and a fault is retryable where a refusal is not.
+      if (isProjectError(err)) {
+        sendError(res, 422, err);
+        return;
+      }
+      sendError(res, 500, {
+        code: "temporarily_unavailable",
         message: err instanceof Error ? err.message : String(err),
-        retryable: false,
-        recovery: "Recompute the change against a fresh snapshot and prepare it again",
+        retryable: true,
+        recovery: "Retry, then check the project's state before preparing the change again",
       });
     }
   });

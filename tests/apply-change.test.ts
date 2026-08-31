@@ -214,7 +214,10 @@ test("a successful apply returns a Write Receipt and advances the snapshot revis
   assert.equal(keepAnalog.state.brand.voice, "plain and warm");
   // And the revision moved, so the pinned snapshot is now behind.
   assert.equal(keepAnalog.state.cursor, cursorBefore + 1);
-  assert.match(String(result.response.note), /pin the new revision/);
+  // The session is re-pinned to the revision the apply produced, rather
+  // than being left behind for the host to discover on its next call.
+  assert.match(String(result.response.note), /pinned to the new revision/);
+  assert.equal((result.response.snapshot as { cursor: number }).cursor, receipt.nextCursor);
 
   const refreshed = await getSnapshot(SESSION);
   assert.equal(refreshed.ok, true);
@@ -323,7 +326,12 @@ test("an unknown digest, and one prepared for another project, both refuse", asy
   const crossProject = await applyChange(SESSION, { digest });
   assert.equal(crossProject.ok, false);
   assert.equal(crossProject.response.error, "approval_mismatch");
-  assert.match(String(crossProject.response.message), /different Connected Project/);
+  // The refusal names where the digest came from as well as where the host
+  // is: the origin project is what it needs to recover.
+  assert.equal(
+    crossProject.response.message,
+    `Digest ${digest} was prepared for KeepAnalog, but partnr is selected.`
+  );
   assert.equal(
     crossProject.response.next,
     "Select the original project or prepare a new change here."
@@ -371,9 +379,12 @@ test("a project that cannot apply spends the approval and says so plainly", asyn
     const result = await applyChange(SESSION, { digest });
     assert.equal(result.ok, false);
     assert.equal(result.response.error, "temporarily_unavailable");
-    assert.match(String(result.response.message), /Nothing was written/);
-    assert.match(String(result.response.message), /this approval is spent/);
-    assert.match(String(result.response.next), /ask the Operator for a fresh approval/);
+    // It does not claim to know whether the change landed, because from
+    // here it cannot: a request that never arrived and one that arrived and
+    // then timed out look identical.
+    assert.match(String(result.response.message), /This approval is spent/);
+    assert.match(String(result.response.message), /whether the change landed is unknown/);
+    assert.match(String(result.response.next), /get_snapshot first and read the result/);
 
     // Spent, and honest about it: better a wasted approval than a change
     // that might have been applied twice.
@@ -510,4 +521,101 @@ test("the dashboard shows the Write Receipt against the change it came from", as
     changes: { digest: string; receipt: unknown }[];
   };
   assert.equal(afterBody.changes.find((c) => c.digest === unapplied)?.receipt, null);
+});
+
+// ---------------------------------------------------------------------------
+// What the review of this branch turned up
+
+test("apply is idempotent on the digest at the project, so a retry cannot write twice", async () => {
+  // MarketingOS consumes the approval before calling apply, and cannot tell
+  // a request that never arrived from one that landed and then timed out.
+  // The contract closes that window by asking the project to be idempotent
+  // on the digest, and the dev stub is.
+  const { createStubProjectRouter } = await import("../server/stub-project");
+  const stubApp = express();
+  stubApp.use("/one", createStubProjectRouter(stubVerifyAgainstProjects(isActiveProjectTokenHash)));
+  stubApp.use("/two", createStubProjectRouter(stubVerifyAgainstProjects(isActiveProjectTokenHash)));
+  const stubServer = stubApp.listen(0);
+  try {
+    const stubPort = (stubServer.address() as AddressInfo).port;
+    const token = (await registerProject("StubOne", `http://127.0.0.1:${stubPort}/one`, "test"))
+      .token;
+    await registerProject("StubTwo", `http://127.0.0.1:${stubPort}/two`, "test");
+
+    const applyTwice = async (): Promise<unknown[]> => {
+      const results: unknown[] = [];
+      for (let i = 0; i < 2; i += 1) {
+        const res = await fetch(`http://127.0.0.1:${stubPort}/one/apply`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            digest: "chg-retry",
+            operations: [
+              { op: "set_field", resource: "brand", path: "voice", value: "warmer" },
+            ],
+          }),
+        });
+        results.push(await res.json());
+      }
+      return results;
+    };
+    const [first, second] = await applyTwice();
+    assert.deepEqual(first, second, "the same digest twice is the same result");
+    assert.equal((first as { cursor: number }).cursor, 3, "the cursor moved exactly once");
+
+    // And two stub projects are two projects, not one shared blob.
+    const other = await fetch(`http://127.0.0.1:${stubPort}/two/resources/brand`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const brand = (await other.json()) as { data: { voice: string }; version: number };
+    assert.equal(brand.data.voice, "plain and factual");
+    assert.equal(brand.version, 1);
+  } finally {
+    stubServer.close();
+  }
+});
+
+test("a project domain answers in its own error shape, even for an oversized change", async () => {
+  const oversized = await fetch(`http://127.0.0.1:${port}/keepanalog/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ digest: "chg-big", operations: [{ pad: "x".repeat(300 * 1024) }] }),
+  });
+  // Unauthenticated, so the bearer check answers first — and in the
+  // contract's shape, which is the point.
+  assert.equal(oversized.status, 401);
+  const unauthorized = (await oversized.json()) as { error: { code: string } };
+  assert.equal(unauthorized.error.code, "invalid_token");
+});
+
+test("a project refusal and a project fault are told apart", async () => {
+  await pin("KeepAnalog");
+  // The stub throws a ProjectError for something its policy forbids, and a
+  // plain Error for a fault. They must not look the same to a caller.
+  const { createStubProjectRouter } = await import("../server/stub-project");
+  const stubApp = express();
+  stubApp.use("/refuses", createStubProjectRouter(stubVerifyAgainstProjects(isActiveProjectTokenHash)));
+  const stubServer = stubApp.listen(0);
+  try {
+    const stubPort = (stubServer.address() as AddressInfo).port;
+    const { token } = await registerProject(
+      "StubRefuses",
+      `http://127.0.0.1:${stubPort}/refuses`,
+      "test"
+    );
+    const res = await fetch(`http://127.0.0.1:${stubPort}/refuses/apply`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        digest: "chg-refused",
+        operations: [{ op: "set_field", resource: "profile", path: "product", value: "x" }],
+      }),
+    });
+    assert.equal(res.status, 422);
+    const body = (await res.json()) as { error: { code: string; retryable: boolean } };
+    assert.equal(body.error.code, "protected_target");
+    assert.equal(body.error.retryable, false);
+  } finally {
+    stubServer.close();
+  }
 });

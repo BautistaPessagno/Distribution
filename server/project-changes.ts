@@ -25,6 +25,7 @@ import { audit } from "./audit";
 import { getDb } from "./db";
 import {
   fetchJson,
+  getSnapshot,
   noProjectSelected,
   pinnedDetail,
   sessionContext,
@@ -33,7 +34,7 @@ import {
   type GatewayResult,
   type SnapshotResource,
 } from "./gateway";
-import { projectServiceToken } from "./projects";
+import { listProjects, projectServiceToken } from "./projects";
 
 /** The operations a Project Change Set may be built from. */
 export const CHANGE_OPERATIONS = ["set_field", "add_claim", "revise_claim"] as const;
@@ -615,10 +616,16 @@ export function decidePreparedChangeSet(
 // ---------------------------------------------------------------------------
 // Phase two: apply
 
+function projectNameOf(projectId: number): string {
+  return listProjects().find((p) => p.id === projectId)?.name ?? `project #${projectId}`;
+}
+
 export interface WriteReceipt {
   receiptId: string;
   digest: string;
   projectId: number;
+  /** Who called apply. Hashes and the validations run are not recorded yet. */
+  actor: string;
   appliedOperations: number;
   resourceVersions: { name: string; version: number }[];
   nextCursor: number;
@@ -629,6 +636,7 @@ interface ReceiptRow {
   id: number;
   digest: string;
   project_id: number;
+  actor: string;
   applied_operations: number;
   resource_versions: string;
   next_cursor: number;
@@ -640,6 +648,7 @@ function rowToReceipt(row: ReceiptRow): WriteReceipt {
     receiptId: `rcpt-${row.id}`,
     digest: row.digest,
     projectId: row.project_id,
+    actor: row.actor,
     appliedOperations: row.applied_operations,
     resourceVersions: JSON.parse(row.resource_versions) as { name: string; version: number }[],
     nextCursor: row.next_cursor,
@@ -669,11 +678,7 @@ export function listWriteReceipts(): WriteReceipt[] {
  */
 function consumeApproval(digest: string): boolean {
   const written = getDb()
-    .prepare(
-      `UPDATE project_changes
-       SET status = 'used', decided_at = decided_at
-       WHERE digest = ? AND status = 'approved'`
-    )
+    .prepare("UPDATE project_changes SET status = 'used' WHERE digest = ? AND status = 'approved'")
     .run(digest);
   return written.changes === 1;
 }
@@ -690,23 +695,26 @@ async function applyAtProject(
   prepared: PreparedChangeSet
 ): Promise<ApplyResponse> {
   const token = await projectServiceToken(projectId, "ai-host");
-  const res = await fetch(`${baseUrl}/apply`, {
+  const res = await fetchJson(`${baseUrl.replace(/\/+$/, "")}/apply`, token, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      digest: prepared.digest,
-      operations: prepared.changeSet.operations,
-    }),
-    signal: AbortSignal.timeout(30_000),
+    body: { digest: prepared.digest, operations: prepared.changeSet.operations },
+    timeoutMs: 30_000,
   });
-  const body = (await res.json().catch(() => null)) as
-    | (ApplyResponse & { error?: { message?: string } })
-    | null;
-  if (!res.ok || !body || typeof body.cursor !== "number") {
-    const detail = body?.error?.message ?? `status ${res.status}`;
-    throw new Error(detail);
+  const body = res.body as (ApplyResponse & { error?: { message?: string } }) | null;
+  if (res.status !== 200 || !body) {
+    throw new Error(body?.error?.message ?? `status ${res.status}`);
   }
-  return { applied: body.applied, resources: body.resources ?? [], cursor: body.cursor };
+  // Every field the receipt needs, checked before the receipt is written:
+  // a receipt that cannot be written after a change that did land would
+  // lose the permanent record of it.
+  if (typeof body.cursor !== "number" || typeof body.applied !== "number") {
+    throw new Error("the project's apply response did not name the applied count and next cursor");
+  }
+  return {
+    applied: body.applied,
+    resources: Array.isArray(body.resources) ? body.resources : [],
+    cursor: body.cursor,
+  };
 }
 
 /**
@@ -739,7 +747,9 @@ export async function applyChange(sessionKey: string, input: unknown): Promise<G
   if (prepared.projectId !== pinned.projectId) {
     return errResult(
       "approval_mismatch",
-      `Digest ${digest} was prepared for a different Connected Project than '${pinned.projectName}'.`,
+      `Digest ${digest} was prepared for ${projectNameOf(prepared.projectId)}, but ${
+        pinned.projectName
+      } is selected.`,
       "Select the original project or prepare a new change here."
     );
   }
@@ -783,10 +793,16 @@ export async function applyChange(sessionKey: string, input: unknown): Promise<G
     );
   }
 
-  // Consume before applying, deliberately. If the project write then fails,
-  // an approval has been spent and nothing was written — the host prepares
-  // again and a person looks again. The other order risks applying a change
-  // twice, and a wasted approval is the cheaper failure by far.
+  // Consume before applying, deliberately. The other order — apply, then
+  // consume — risks a crash between the two leaving an approval that can be
+  // applied a second time, and a double write to someone's project is far
+  // worse than a wasted approval.
+  //
+  // The cost is that a failed apply spends the approval, and MarketingOS
+  // genuinely cannot tell a request that never arrived from one that landed
+  // and then timed out. So the refusal says so rather than guessing, and
+  // the project contract asks for apply to be idempotent on the digest, so
+  // a retry of the same digest cannot write twice.
   if (!consumeApproval(digest)) {
     return errResult(
       "approval_mismatch",
@@ -803,20 +819,21 @@ export async function applyChange(sessionKey: string, input: unknown): Promise<G
     audit("ai-host", "changes.apply_failed", { digest, projectId: pinned.projectId, detail });
     return errResult(
       "temporarily_unavailable",
-      `The Connected Project did not apply the change: ${detail}. Nothing was written, and this approval is spent.`,
-      "project.get_snapshot, prepare the change again, and ask the Operator for a fresh approval."
+      `The Connected Project did not confirm the change: ${detail}. This approval is spent, and whether the change landed is unknown from here.`,
+      "project.get_snapshot first and read the result: if the change is already there, nothing more is needed. If it is not, prepare it again and ask the Operator for a fresh approval."
     );
   }
 
-  const info = getDb()
+  getDb()
     .prepare(
       `INSERT INTO write_receipts
-        (digest, project_id, applied_operations, resource_versions, next_cursor)
-       VALUES (?, ?, ?, ?, ?)`
+        (digest, project_id, actor, applied_operations, resource_versions, next_cursor)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
     .run(
       digest,
       pinned.projectId,
+      "ai-host",
       result.applied,
       JSON.stringify(result.resources),
       result.cursor
@@ -827,17 +844,27 @@ export async function applyChange(sessionKey: string, input: unknown): Promise<G
   audit("ai-host", "changes.applied", {
     digest,
     projectId: pinned.projectId,
-    receiptId: `rcpt-${Number(info.lastInsertRowid)}`,
+    receiptId: receipt.receiptId,
     applied: result.applied,
     nextCursor: result.cursor,
   });
+
+  // The apply moved the project, so the snapshot this session is pinned to
+  // is now the old one. Re-pin here rather than leaving the host to find
+  // out by having its next call refused as stale.
+  const repinned = await getSnapshot(sessionKey);
 
   return {
     ok: true,
     response: {
       context: sessionContext(sessionKey),
       writeReceipt: receipt,
-      note: "The change is applied and the approval is spent. Call project.get_snapshot to pin the new revision before reading or writing again.",
+      ...(repinned.ok
+        ? { snapshot: repinned.response.snapshot }
+        : { snapshotWarning: repinned.response }),
+      note: repinned.ok
+        ? "The change is applied, the approval is spent, and this session is pinned to the new revision."
+        : "The change is applied and the approval is spent, but the new revision could not be pinned. Call project.get_snapshot before reading or writing again.",
     },
   };
 }

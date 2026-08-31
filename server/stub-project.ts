@@ -16,11 +16,7 @@ import {
   type ResourceEnvelope,
 } from "./project-domain-sdk";
 
-// The stub's own revision, so a write here moves the change cursor the way
-// a real project domain's would.
-let stubCursor = 2;
-
-const STUB_DATA: Record<RequiredResource, { state: "ok" | "empty"; data: unknown }> = {
+const INITIAL_DATA: Record<RequiredResource, { state: "ok" | "empty"; data: unknown }> = {
   profile: {
     state: "ok",
     data: {
@@ -54,16 +50,25 @@ const STUB_DATA: Record<RequiredResource, { state: "ok" | "empty"; data: unknown
   },
 };
 
-const STUB_VERSIONS: Record<RequiredResource, number> = {
-  profile: 1,
-  audiences: 1,
-  brand: 1,
-  claims: 1,
-  assets: 1,
-  "write-policy": 1,
-};
-
 export function createStubProjectRouter(verifyToken: (token: string) => boolean): Router {
+  // Per-router state, so two stub projects in one process are two projects
+  // rather than one shared mutable blob.
+  const data = JSON.parse(JSON.stringify(INITIAL_DATA)) as typeof INITIAL_DATA;
+  const versions: Record<RequiredResource, number> = {
+    profile: 1,
+    audiences: 1,
+    brand: 1,
+    claims: 1,
+    assets: 1,
+    "write-policy": 1,
+  };
+  // The stub's own revision, so a write here moves the change cursor the
+  // way a real project domain's would.
+  let cursor = 2;
+  // Apply is idempotent on the digest, as the contract requires: the same
+  // digest twice returns the first result rather than writing twice.
+  const applied = new Map<string, ApplyResult>();
+
   return createProjectDomainRouter({
     manifest(): ProjectManifest {
       return {
@@ -74,40 +79,50 @@ export function createStubProjectRouter(verifyToken: (token: string) => boolean)
       };
     },
     resource(name: RequiredResource): ResourceEnvelope {
-      const entry = STUB_DATA[name];
-      return { resource: name, state: entry.state, version: STUB_VERSIONS[name], data: entry.data };
+      const entry = data[name];
+      return { resource: name, state: entry.state, version: versions[name], data: entry.data };
     },
     changes(after: number): ChangesPage {
       const entries = [
         { cursor: 1, resource: "profile", kind: "created" as const },
         { cursor: 2, resource: "brand", kind: "created" as const },
-        ...Array.from({ length: stubCursor - 2 }, (_, i) => ({
+        ...Array.from({ length: cursor - 2 }, (_, i) => ({
           cursor: 3 + i,
           resource: "brand",
           kind: "changed" as const,
         })),
       ].filter((e) => e.cursor > after);
-      return { cursor: stubCursor, entries };
+      return { cursor, entries };
     },
-    apply({ operations }: ApplyRequest): ApplyResult {
+    apply({ digest, operations }: ApplyRequest): ApplyResult {
+      const already = applied.get(digest);
+      if (already) return already;
+
       // Narrow on purpose, matching the stub's write policy: brand fields
       // and nothing else. A real project domain does the same thing against
       // whatever it actually stores.
-      const brand = STUB_DATA.brand.data as Record<string, unknown>;
+      const brand = data.brand.data as Record<string, unknown>;
       for (const raw of operations) {
         const op = raw as { op?: string; resource?: string; path?: string; value?: unknown };
         if (op.op !== "set_field" || op.resource !== "brand" || !op.path) {
-          throw new Error(`the dev stub accepts set_field on brand, not ${String(op.op)}`);
+          throw {
+            code: "protected_target",
+            message: `the dev stub accepts set_field on brand, not ${String(op.op)}`,
+            retryable: false,
+            recovery: "Consult the project's write-policy resource for what it permits",
+          };
         }
         brand[op.path] = op.value;
       }
-      stubCursor += 1;
-      STUB_VERSIONS.brand += 1;
-      return {
+      cursor += 1;
+      versions.brand += 1;
+      const result: ApplyResult = {
         applied: operations.length,
-        resources: [{ name: "brand", version: STUB_VERSIONS.brand }],
-        cursor: stubCursor,
+        resources: [{ name: "brand", version: versions.brand }],
+        cursor,
       };
+      applied.set(digest, result);
+      return result;
     },
     verifyToken,
   });
