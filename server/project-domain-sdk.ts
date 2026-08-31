@@ -66,15 +66,53 @@ export interface ChangesPage {
   entries: { cursor: number; resource: string; kind: "created" | "changed" | "removed" }[];
 }
 
+/**
+ * The write side of the contract. MarketingOS has already validated the
+ * change against the project's own write policy and a person has approved
+ * the exact diff; this applies it atomically or does not apply it at all.
+ *
+ * The result is what a Write Receipt is made of: how many operations went
+ * in, the resulting version of every resource that moved, and the change
+ * cursor afterwards.
+ *
+ * **Apply must be idempotent on the digest.** MarketingOS consumes an
+ * approval before calling this, and a network failure afterwards is
+ * indistinguishable from one before it — so a project domain that sees the
+ * same digest twice must return the first result rather than applying the
+ * operations again.
+ */
+export interface ApplyRequest {
+  digest: string;
+  operations: unknown[];
+}
+
+export interface ApplyResult {
+  applied: number;
+  resources: { name: string; version: number }[];
+  cursor: number;
+}
+
 export interface ProjectDomainImpl {
   manifest(): ProjectManifest;
   resource(name: RequiredResource): ResourceEnvelope;
   changes(after: number): ChangesPage;
   verifyToken(token: string): boolean;
+  /**
+   * Optional. A project domain that does not implement this accepts no
+   * writes at all, which is the same thing its write policy should say.
+   */
+  apply?(request: ApplyRequest): ApplyResult | Promise<ApplyResult>;
 }
 
 function sendError(res: Response, status: number, error: ProjectError): void {
   res.status(status).json({ error });
+}
+
+/** A refusal the project domain means, as opposed to something that broke. */
+export function isProjectError(err: unknown): err is ProjectError {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as Partial<ProjectError>;
+  return typeof e.code === "string" && typeof e.message === "string";
 }
 
 function bearerToken(req: Request): string | null {
@@ -132,12 +170,71 @@ export function createProjectDomainRouter(impl: ProjectDomainImpl): Router {
     res.json(impl.resource(name as RequiredResource));
   });
 
+  // A change set is control JSON, not payload: the operations name fields
+  // and values, and an asset arrives through its own surface.
+  const applyBody = express.json({ limit: "256kb" });
+
+  router.post("/apply", (req, res, next) => {
+    applyBody(req, res, (err) => {
+      if (!err) {
+        next();
+        return;
+      }
+      // Even a body that never parsed answers in this contract's shape.
+      sendError(res, 413, {
+        code: "invalid_schema",
+        message: "The change set is larger than this endpoint accepts",
+        retryable: false,
+        recovery: "Split the change into smaller Project Change Sets",
+      });
+    });
+  });
+
+  router.post("/apply", async (req, res) => {
+    if (!impl.apply) {
+      sendError(res, 404, {
+        code: "unsupported_capability",
+        message: "This project domain does not accept writes",
+        retryable: false,
+        recovery: "Consult the project's write-policy resource for what it permits",
+      });
+      return;
+    }
+    const digest = typeof req.body?.digest === "string" ? req.body.digest : "";
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : null;
+    if (!digest || !operations) {
+      sendError(res, 400, {
+        code: "invalid_schema",
+        message: "An apply names the approved digest and the operations to apply",
+        retryable: false,
+        recovery: "Send {digest, operations} as prepared and approved",
+      });
+      return;
+    }
+    try {
+      res.json(await impl.apply({ digest, operations }));
+    } catch (err) {
+      // A refusal the project means is a ProjectError it threw; anything
+      // else is a fault, and a fault is retryable where a refusal is not.
+      if (isProjectError(err)) {
+        sendError(res, 422, err);
+        return;
+      }
+      sendError(res, 500, {
+        code: "temporarily_unavailable",
+        message: err instanceof Error ? err.message : String(err),
+        retryable: true,
+        recovery: "Retry, then check the project's state before preparing the change again",
+      });
+    }
+  });
+
   router.use((_req, res) => {
     sendError(res, 404, {
       code: "unsupported_capability",
       message: "Unknown project-domain path",
       retryable: false,
-      recovery: "Use /manifest, /changes, or /resources/:name",
+      recovery: "Use /manifest, /changes, /resources/:name, or /apply",
     });
   });
 

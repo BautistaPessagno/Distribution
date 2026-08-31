@@ -5,6 +5,7 @@ import { log } from "./log";
 import {
   ApprovalError,
   decidePreparedChangeSet,
+  getReceiptForDigest,
   listPreparedChangeSets,
   renderDiff,
   type ApprovalStatus,
@@ -35,6 +36,9 @@ export function approvalRouter(): Router {
       ...prepared,
       projectName: names.get(prepared.projectId) ?? `project #${prepared.projectId}`,
       diffText: renderDiff(prepared.diff),
+      // What actually landed, once it landed. A decided change with no
+      // receipt was approved and never applied.
+      receipt: getReceiptForDigest(prepared.digest),
     });
   }
 

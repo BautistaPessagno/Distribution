@@ -21,8 +21,15 @@ export function getDb(): Database.Database {
 }
 
 // Bumped whenever migrate() changes shape, so checkDb's report means
-// something. 1: the tables through ticket 12. 2: the piece approval columns.
-const SCHEMA_VERSION = "2";
+// something.
+//   1  the tables through ticket 12
+//   2  the piece approval columns
+//   3  the recorded outcome of a measured piece
+//   4  Creative Templates
+//   5  Marketing Assets and the piece image handoff state
+//   6  prepared Project Change Sets
+//   7  Write Receipts and single-use approvals
+const SCHEMA_VERSION = "7";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -191,6 +198,37 @@ function migrate(d: Database.Database): void {
       decided_at TEXT,
       decided_by TEXT
     );
+    CREATE TABLE IF NOT EXISTS write_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      -- One receipt per digest, enforced here rather than in code: an
+      -- approval is single-use, so a second application is impossible even
+      -- if something upstream tried.
+      digest TEXT NOT NULL UNIQUE REFERENCES project_changes(digest),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      actor TEXT NOT NULL DEFAULT 'ai-host',
+      applied_operations INTEGER NOT NULL,
+      resource_versions TEXT NOT NULL DEFAULT '[]',
+      next_cursor INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TRIGGER IF NOT EXISTS write_receipts_no_update
+    BEFORE UPDATE ON write_receipts
+    BEGIN
+      SELECT RAISE(ABORT, 'a Write Receipt is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS write_receipts_no_delete
+    BEFORE DELETE ON write_receipts
+    BEGIN
+      SELECT RAISE(ABORT, 'a Write Receipt is a permanent record');
+    END;
+    -- An approval is single-use at the storage level: once consumed, no
+    -- statement anywhere can move it back to something appliable.
+    CREATE TRIGGER IF NOT EXISTS project_changes_used_is_final
+    BEFORE UPDATE ON project_changes
+    WHEN old.status = 'used'
+    BEGIN
+      SELECT RAISE(ABORT, 'a consumed approval cannot be changed');
+    END;
     CREATE TABLE IF NOT EXISTS assets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id),

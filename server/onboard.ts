@@ -52,6 +52,8 @@ export const ONBOARD_GUIDE = {
       "Phase one of a project write: validate a Project Change Set against the pinned snapshot, change nothing, and return the digest, the exact diff, validations, and warnings.",
     "marketingos.get_approval":
       "The Operator's decision on a prepared digest: pending, approved, rejected, or used, with the one call to make next. A status, never a token.",
+    "project.apply_change":
+      "Phase two: apply an approved prepared change atomically and get a Write Receipt. Exactly once per approval; refuses before approval, after rejection, on reuse, cross-project, or once the project has moved on.",
     "project.get_snapshot": "Refresh the pinned Project Snapshot; the recovery path for stale_snapshot.",
     "project.get_resource": "Read brand, claims, or profile from the pinned snapshot with provenance and explicit Context Gap states.",
   },

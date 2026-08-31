@@ -20,6 +20,14 @@ export interface DiffEntry {
   after: unknown;
 }
 
+export interface WriteReceipt {
+  receiptId: string;
+  appliedOperations: number;
+  resourceVersions: { name: string; version: number }[];
+  nextCursor: number;
+  createdAt: string;
+}
+
 export interface PreparedChangeSet {
   digest: string;
   projectId: number;
@@ -32,6 +40,8 @@ export interface PreparedChangeSet {
   warnings: string[];
   status: "pending" | "approved" | "rejected" | "used";
   createdAt: string;
+  /** Present once the change was actually applied. */
+  receipt: WriteReceipt | null;
 }
 
 const STATUS_TAG: Record<PreparedChangeSet["status"], string> = {
@@ -141,6 +151,28 @@ export function ChangeCard({
             ))}
           </ul>
         </details>
+
+        {change.receipt && (
+          <div className="body-text">
+            <strong>Write Receipt</strong>{" "}
+            <span className="mono">{change.receipt.receiptId}</span>
+            <div>
+              {change.receipt.appliedOperations} operation
+              {change.receipt.appliedOperations === 1 ? "" : "s"} applied ·{" "}
+              {change.receipt.resourceVersions
+                .map((r) => `${r.name} v${r.version}`)
+                .join(", ") || "no resource versions reported"}{" "}
+              · next cursor {change.receipt.nextCursor} ·{" "}
+              {new Date(change.receipt.createdAt).toLocaleString()}
+            </div>
+          </div>
+        )}
+        {change.status === "approved" && !change.receipt && (
+          <p className="body-text">
+            <span className="tag tag-info">approved, not yet applied</span> The AI Host has
+            not called apply_change for this digest.
+          </p>
+        )}
 
         {note && <p className="body-text">{note}</p>}
         {problem && <p className="error-text">{problem}</p>}

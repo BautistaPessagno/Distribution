@@ -33,7 +33,7 @@ import { createPiece, getPiece, listPieces, pieceDocSchema } from "./pieces";
 import { instantiateTemplate, listTemplates, saveAsTemplate } from "./templates";
 import { exportPiece, renderPreview } from "./renderer";
 import { ONBOARD_GUIDE } from "./onboard";
-import { changeSetSchema, getApproval, prepareChange } from "./project-changes";
+import { applyChange, changeSetSchema, getApproval, prepareChange } from "./project-changes";
 import { assertNoSecretShapedStrings, ResponseLintError } from "./response-lint";
 import { log } from "./log";
 
@@ -307,6 +307,15 @@ function buildServer(sessionKey: string): McpServer {
       inputSchema: { digest: z.string() },
     },
     async ({ digest }) => lintedJson(getApproval(sessionKey, { digest }).response)
+  );
+  server.registerTool(
+    "project.apply_change",
+    {
+      description:
+        "Phase two of a project write. Applies an approved prepared change atomically and returns a Write Receipt naming the operations applied, the resulting resource versions, and the next change cursor. Refuses before approval, after rejection, on a consumed approval, from another project, or once the project has moved on — each with the recovery path. Call it exactly once per approval.",
+      inputSchema: { digest: z.string() },
+    },
+    async ({ digest }) => lintedJson((await applyChange(sessionKey, { digest })).response)
   );
   server.registerTool(
     "project.get_snapshot",

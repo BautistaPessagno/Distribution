@@ -11,7 +11,13 @@
 //
 // No grant token ever transits the host. The approval is a row here, keyed
 // by digest, and the host never holds anything it could replay elsewhere.
-// Applying an approved change is ticket 18.
+//
+// Phase two (ticket 18) is `apply_change(digest)`: it walks the refusal
+// matrix, consumes the approval, applies the change atomically at the
+// project, and returns a Write Receipt. An approval is single-use at the
+// storage level — a trigger forbids a consumed one from ever changing
+// again, and one receipt per digest is a uniqueness constraint — so
+// "exactly once" does not depend on this file being careful.
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -19,6 +25,7 @@ import { audit } from "./audit";
 import { getDb } from "./db";
 import {
   fetchJson,
+  getSnapshot,
   noProjectSelected,
   pinnedDetail,
   sessionContext,
@@ -27,7 +34,7 @@ import {
   type GatewayResult,
   type SnapshotResource,
 } from "./gateway";
-import { projectServiceToken } from "./projects";
+import { listProjects, projectServiceToken } from "./projects";
 
 /** The operations a Project Change Set may be built from. */
 export const CHANGE_OPERATIONS = ["set_field", "add_claim", "revise_claim"] as const;
@@ -604,4 +611,260 @@ export function decidePreparedChangeSet(
     summary: prepared.summary,
   });
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Phase two: apply
+
+function projectNameOf(projectId: number): string {
+  return listProjects().find((p) => p.id === projectId)?.name ?? `project #${projectId}`;
+}
+
+export interface WriteReceipt {
+  receiptId: string;
+  digest: string;
+  projectId: number;
+  /** Who called apply. Hashes and the validations run are not recorded yet. */
+  actor: string;
+  appliedOperations: number;
+  resourceVersions: { name: string; version: number }[];
+  nextCursor: number;
+  createdAt: string;
+}
+
+interface ReceiptRow {
+  id: number;
+  digest: string;
+  project_id: number;
+  actor: string;
+  applied_operations: number;
+  resource_versions: string;
+  next_cursor: number;
+  created_at: string;
+}
+
+function rowToReceipt(row: ReceiptRow): WriteReceipt {
+  return {
+    receiptId: `rcpt-${row.id}`,
+    digest: row.digest,
+    projectId: row.project_id,
+    actor: row.actor,
+    appliedOperations: row.applied_operations,
+    resourceVersions: JSON.parse(row.resource_versions) as { name: string; version: number }[],
+    nextCursor: row.next_cursor,
+    createdAt: row.created_at,
+  };
+}
+
+export function getReceiptForDigest(digest: string): WriteReceipt | null {
+  const row = getDb().prepare("SELECT * FROM write_receipts WHERE digest = ?").get(digest) as
+    | ReceiptRow
+    | undefined;
+  return row ? rowToReceipt(row) : null;
+}
+
+export function listWriteReceipts(): WriteReceipt[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM write_receipts ORDER BY id DESC")
+    .all() as ReceiptRow[];
+  return rows.map(rowToReceipt);
+}
+
+/**
+ * Consume the approval. This is the moment "exactly once" is decided, and
+ * it is decided by the database: the UPDATE only matches a row that is
+ * still `approved`, and a trigger forbids a `used` row from ever changing
+ * again. Two callers racing means one row changes and the other is told no.
+ */
+function consumeApproval(digest: string): boolean {
+  const written = getDb()
+    .prepare("UPDATE project_changes SET status = 'used' WHERE digest = ? AND status = 'approved'")
+    .run(digest);
+  return written.changes === 1;
+}
+
+interface ApplyResponse {
+  applied: number;
+  resources: { name: string; version: number }[];
+  cursor: number;
+}
+
+async function applyAtProject(
+  projectId: number,
+  baseUrl: string,
+  prepared: PreparedChangeSet
+): Promise<ApplyResponse> {
+  const token = await projectServiceToken(projectId, "ai-host");
+  const res = await fetchJson(`${baseUrl.replace(/\/+$/, "")}/apply`, token, {
+    method: "POST",
+    body: { digest: prepared.digest, operations: prepared.changeSet.operations },
+    timeoutMs: 30_000,
+  });
+  const body = res.body as (ApplyResponse & { error?: { message?: string } }) | null;
+  if (res.status !== 200 || !body) {
+    throw new Error(body?.error?.message ?? `status ${res.status}`);
+  }
+  // Every field the receipt needs, checked before the receipt is written:
+  // a receipt that cannot be written after a change that did land would
+  // lose the permanent record of it.
+  if (typeof body.cursor !== "number" || typeof body.applied !== "number") {
+    throw new Error("the project's apply response did not name the applied count and next cursor");
+  }
+  return {
+    applied: body.applied,
+    resources: Array.isArray(body.resources) ? body.resources : [],
+    cursor: body.cursor,
+  };
+}
+
+/**
+ * Phase two. The refusal matrix comes first and in this order, because a
+ * host that gets here with the wrong thing should be told which wrong thing
+ * it is — see GatewaySim walkthroughs 4 and 5.
+ */
+export async function applyChange(sessionKey: string, input: unknown): Promise<GatewayResult> {
+  const pinned = pinnedDetail(sessionKey);
+  if (!pinned) return noProjectSelected();
+
+  const parsed = z.object({ digest: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) {
+    return errResult(
+      "invalid_schema",
+      "Applying a change names the approved digest.",
+      'Call project.apply_change with {"digest":"chg-…"}.'
+    );
+  }
+  const { digest } = parsed.data;
+
+  const prepared = getPreparedChangeSet(digest);
+  if (!prepared) {
+    return errResult(
+      "approval_mismatch",
+      `No prepared change with digest ${digest}.`,
+      "project.prepare_change first."
+    );
+  }
+  if (prepared.projectId !== pinned.projectId) {
+    return errResult(
+      "approval_mismatch",
+      `Digest ${digest} was prepared for ${projectNameOf(prepared.projectId)}, but ${
+        pinned.projectName
+      } is selected.`,
+      "Select the original project or prepare a new change here."
+    );
+  }
+  if (prepared.status === "used") {
+    return errResult(
+      "approval_mismatch",
+      "This single-use approval was already consumed.",
+      "Prepare a new change and get a fresh approval."
+    );
+  }
+  if (prepared.status === "rejected") {
+    return errResult(
+      "approval_required",
+      "The Operator rejected this digest.",
+      "Revise the change and prepare again."
+    );
+  }
+  if (prepared.status === "pending") {
+    return errResult(
+      "approval_required",
+      `Digest ${digest} is not approved yet.`,
+      "Poll marketingos.get_approval and wait for the Operator."
+    );
+  }
+
+  // An approval is a person saying yes to a diff against a specific state
+  // of the project. If the project moved after that, the approval no longer
+  // describes anything anyone agreed to — even though it says "approved".
+  const stale = await staleSnapshotRefusal(
+    sessionKey,
+    [...new Set(prepared.changeSet.operations.map(targetResource))],
+    "project.apply_change",
+    "project.get_snapshot, recompute, prepare again, get a fresh approval."
+  );
+  if (stale) return stale;
+  if (prepared.cursor !== pinned.cursor) {
+    return errResult(
+      "stale_snapshot",
+      "The project changed after this change was prepared; the approval no longer matches reality.",
+      "project.get_snapshot, recompute, prepare again, get a fresh approval."
+    );
+  }
+
+  // Consume before applying, deliberately. The other order — apply, then
+  // consume — risks a crash between the two leaving an approval that can be
+  // applied a second time, and a double write to someone's project is far
+  // worse than a wasted approval.
+  //
+  // The cost is that a failed apply spends the approval, and MarketingOS
+  // genuinely cannot tell a request that never arrived from one that landed
+  // and then timed out. So the refusal says so rather than guessing, and
+  // the project contract asks for apply to be idempotent on the digest, so
+  // a retry of the same digest cannot write twice.
+  if (!consumeApproval(digest)) {
+    return errResult(
+      "approval_mismatch",
+      "This single-use approval was already consumed.",
+      "Prepare a new change and get a fresh approval."
+    );
+  }
+
+  let result: ApplyResponse;
+  try {
+    result = await applyAtProject(pinned.projectId, pinned.baseUrl, prepared);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    audit("ai-host", "changes.apply_failed", { digest, projectId: pinned.projectId, detail });
+    return errResult(
+      "temporarily_unavailable",
+      `The Connected Project did not confirm the change: ${detail}. This approval is spent, and whether the change landed is unknown from here.`,
+      "project.get_snapshot first and read the result: if the change is already there, nothing more is needed. If it is not, prepare it again and ask the Operator for a fresh approval."
+    );
+  }
+
+  getDb()
+    .prepare(
+      `INSERT INTO write_receipts
+        (digest, project_id, actor, applied_operations, resource_versions, next_cursor)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      digest,
+      pinned.projectId,
+      "ai-host",
+      result.applied,
+      JSON.stringify(result.resources),
+      result.cursor
+    );
+  const receipt = getReceiptForDigest(digest);
+  if (!receipt) throw new Error("write receipt did not persist");
+
+  audit("ai-host", "changes.applied", {
+    digest,
+    projectId: pinned.projectId,
+    receiptId: receipt.receiptId,
+    applied: result.applied,
+    nextCursor: result.cursor,
+  });
+
+  // The apply moved the project, so the snapshot this session is pinned to
+  // is now the old one. Re-pin here rather than leaving the host to find
+  // out by having its next call refused as stale.
+  const repinned = await getSnapshot(sessionKey);
+
+  return {
+    ok: true,
+    response: {
+      context: sessionContext(sessionKey),
+      writeReceipt: receipt,
+      ...(repinned.ok
+        ? { snapshot: repinned.response.snapshot }
+        : { snapshotWarning: repinned.response }),
+      note: repinned.ok
+        ? "The change is applied, the approval is spent, and this session is pinned to the new revision."
+        : "The change is applied and the approval is spent, but the new revision could not be pinned. Call project.get_snapshot before reading or writing again.",
+    },
+  };
 }
