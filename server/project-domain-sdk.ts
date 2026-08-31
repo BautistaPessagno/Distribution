@@ -66,11 +66,36 @@ export interface ChangesPage {
   entries: { cursor: number; resource: string; kind: "created" | "changed" | "removed" }[];
 }
 
+/**
+ * The write side of the contract. MarketingOS has already validated the
+ * change against the project's own write policy and a person has approved
+ * the exact diff; this applies it atomically or does not apply it at all.
+ *
+ * The result is what a Write Receipt is made of: how many operations went
+ * in, the resulting version of every resource that moved, and the change
+ * cursor afterwards.
+ */
+export interface ApplyRequest {
+  digest: string;
+  operations: unknown[];
+}
+
+export interface ApplyResult {
+  applied: number;
+  resources: { name: string; version: number }[];
+  cursor: number;
+}
+
 export interface ProjectDomainImpl {
   manifest(): ProjectManifest;
   resource(name: RequiredResource): ResourceEnvelope;
   changes(after: number): ChangesPage;
   verifyToken(token: string): boolean;
+  /**
+   * Optional. A project domain that does not implement this accepts no
+   * writes at all, which is the same thing its write policy should say.
+   */
+  apply?(request: ApplyRequest): ApplyResult;
 }
 
 function sendError(res: Response, status: number, error: ProjectError): void {
@@ -132,12 +157,45 @@ export function createProjectDomainRouter(impl: ProjectDomainImpl): Router {
     res.json(impl.resource(name as RequiredResource));
   });
 
+  router.post("/apply", express.json({ limit: "4mb" }), (req, res) => {
+    if (!impl.apply) {
+      sendError(res, 404, {
+        code: "unsupported_capability",
+        message: "This project domain does not accept writes",
+        retryable: false,
+        recovery: "Consult the project's write-policy resource for what it permits",
+      });
+      return;
+    }
+    const digest = typeof req.body?.digest === "string" ? req.body.digest : "";
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : null;
+    if (!digest || !operations) {
+      sendError(res, 400, {
+        code: "invalid_schema",
+        message: "An apply names the approved digest and the operations to apply",
+        retryable: false,
+        recovery: "Send {digest, operations} as prepared and approved",
+      });
+      return;
+    }
+    try {
+      res.json(impl.apply({ digest, operations }));
+    } catch (err) {
+      sendError(res, 422, {
+        code: "validation_failed",
+        message: err instanceof Error ? err.message : String(err),
+        retryable: false,
+        recovery: "Recompute the change against a fresh snapshot and prepare it again",
+      });
+    }
+  });
+
   router.use((_req, res) => {
     sendError(res, 404, {
       code: "unsupported_capability",
       message: "Unknown project-domain path",
       retryable: false,
-      recovery: "Use /manifest, /changes, or /resources/:name",
+      recovery: "Use /manifest, /changes, /resources/:name, or /apply",
     });
   });
 

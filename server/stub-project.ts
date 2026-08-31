@@ -8,11 +8,17 @@ import {
   createProjectDomainRouter,
   PROJECT_CONTRACT_VERSION,
   REQUIRED_RESOURCES,
+  type ApplyRequest,
+  type ApplyResult,
   type ChangesPage,
   type ProjectManifest,
   type RequiredResource,
   type ResourceEnvelope,
 } from "./project-domain-sdk";
+
+// The stub's own revision, so a write here moves the change cursor the way
+// a real project domain's would.
+let stubCursor = 2;
 
 const STUB_DATA: Record<RequiredResource, { state: "ok" | "empty"; data: unknown }> = {
   profile: {
@@ -48,6 +54,15 @@ const STUB_DATA: Record<RequiredResource, { state: "ok" | "empty"; data: unknown
   },
 };
 
+const STUB_VERSIONS: Record<RequiredResource, number> = {
+  profile: 1,
+  audiences: 1,
+  brand: 1,
+  claims: 1,
+  assets: 1,
+  "write-policy": 1,
+};
+
 export function createStubProjectRouter(verifyToken: (token: string) => boolean): Router {
   return createProjectDomainRouter({
     manifest(): ProjectManifest {
@@ -60,14 +75,39 @@ export function createStubProjectRouter(verifyToken: (token: string) => boolean)
     },
     resource(name: RequiredResource): ResourceEnvelope {
       const entry = STUB_DATA[name];
-      return { resource: name, state: entry.state, version: 1, data: entry.data };
+      return { resource: name, state: entry.state, version: STUB_VERSIONS[name], data: entry.data };
     },
     changes(after: number): ChangesPage {
       const entries = [
         { cursor: 1, resource: "profile", kind: "created" as const },
         { cursor: 2, resource: "brand", kind: "created" as const },
+        ...Array.from({ length: stubCursor - 2 }, (_, i) => ({
+          cursor: 3 + i,
+          resource: "brand",
+          kind: "changed" as const,
+        })),
       ].filter((e) => e.cursor > after);
-      return { cursor: 2, entries };
+      return { cursor: stubCursor, entries };
+    },
+    apply({ operations }: ApplyRequest): ApplyResult {
+      // Narrow on purpose, matching the stub's write policy: brand fields
+      // and nothing else. A real project domain does the same thing against
+      // whatever it actually stores.
+      const brand = STUB_DATA.brand.data as Record<string, unknown>;
+      for (const raw of operations) {
+        const op = raw as { op?: string; resource?: string; path?: string; value?: unknown };
+        if (op.op !== "set_field" || op.resource !== "brand" || !op.path) {
+          throw new Error(`the dev stub accepts set_field on brand, not ${String(op.op)}`);
+        }
+        brand[op.path] = op.value;
+      }
+      stubCursor += 1;
+      STUB_VERSIONS.brand += 1;
+      return {
+        applied: operations.length,
+        resources: [{ name: "brand", version: STUB_VERSIONS.brand }],
+        cursor: stubCursor,
+      };
     },
     verifyToken,
   });

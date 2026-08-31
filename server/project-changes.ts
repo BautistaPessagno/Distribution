@@ -11,7 +11,13 @@
 //
 // No grant token ever transits the host. The approval is a row here, keyed
 // by digest, and the host never holds anything it could replay elsewhere.
-// Applying an approved change is ticket 18.
+//
+// Phase two (ticket 18) is `apply_change(digest)`: it walks the refusal
+// matrix, consumes the approval, applies the change atomically at the
+// project, and returns a Write Receipt. An approval is single-use at the
+// storage level — a trigger forbids a consumed one from ever changing
+// again, and one receipt per digest is a uniqueness constraint — so
+// "exactly once" does not depend on this file being careful.
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -604,4 +610,234 @@ export function decidePreparedChangeSet(
     summary: prepared.summary,
   });
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Phase two: apply
+
+export interface WriteReceipt {
+  receiptId: string;
+  digest: string;
+  projectId: number;
+  appliedOperations: number;
+  resourceVersions: { name: string; version: number }[];
+  nextCursor: number;
+  createdAt: string;
+}
+
+interface ReceiptRow {
+  id: number;
+  digest: string;
+  project_id: number;
+  applied_operations: number;
+  resource_versions: string;
+  next_cursor: number;
+  created_at: string;
+}
+
+function rowToReceipt(row: ReceiptRow): WriteReceipt {
+  return {
+    receiptId: `rcpt-${row.id}`,
+    digest: row.digest,
+    projectId: row.project_id,
+    appliedOperations: row.applied_operations,
+    resourceVersions: JSON.parse(row.resource_versions) as { name: string; version: number }[],
+    nextCursor: row.next_cursor,
+    createdAt: row.created_at,
+  };
+}
+
+export function getReceiptForDigest(digest: string): WriteReceipt | null {
+  const row = getDb().prepare("SELECT * FROM write_receipts WHERE digest = ?").get(digest) as
+    | ReceiptRow
+    | undefined;
+  return row ? rowToReceipt(row) : null;
+}
+
+export function listWriteReceipts(): WriteReceipt[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM write_receipts ORDER BY id DESC")
+    .all() as ReceiptRow[];
+  return rows.map(rowToReceipt);
+}
+
+/**
+ * Consume the approval. This is the moment "exactly once" is decided, and
+ * it is decided by the database: the UPDATE only matches a row that is
+ * still `approved`, and a trigger forbids a `used` row from ever changing
+ * again. Two callers racing means one row changes and the other is told no.
+ */
+function consumeApproval(digest: string): boolean {
+  const written = getDb()
+    .prepare(
+      `UPDATE project_changes
+       SET status = 'used', decided_at = decided_at
+       WHERE digest = ? AND status = 'approved'`
+    )
+    .run(digest);
+  return written.changes === 1;
+}
+
+interface ApplyResponse {
+  applied: number;
+  resources: { name: string; version: number }[];
+  cursor: number;
+}
+
+async function applyAtProject(
+  projectId: number,
+  baseUrl: string,
+  prepared: PreparedChangeSet
+): Promise<ApplyResponse> {
+  const token = await projectServiceToken(projectId, "ai-host");
+  const res = await fetch(`${baseUrl}/apply`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      digest: prepared.digest,
+      operations: prepared.changeSet.operations,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = (await res.json().catch(() => null)) as
+    | (ApplyResponse & { error?: { message?: string } })
+    | null;
+  if (!res.ok || !body || typeof body.cursor !== "number") {
+    const detail = body?.error?.message ?? `status ${res.status}`;
+    throw new Error(detail);
+  }
+  return { applied: body.applied, resources: body.resources ?? [], cursor: body.cursor };
+}
+
+/**
+ * Phase two. The refusal matrix comes first and in this order, because a
+ * host that gets here with the wrong thing should be told which wrong thing
+ * it is — see GatewaySim walkthroughs 4 and 5.
+ */
+export async function applyChange(sessionKey: string, input: unknown): Promise<GatewayResult> {
+  const pinned = pinnedDetail(sessionKey);
+  if (!pinned) return noProjectSelected();
+
+  const parsed = z.object({ digest: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) {
+    return errResult(
+      "invalid_schema",
+      "Applying a change names the approved digest.",
+      'Call project.apply_change with {"digest":"chg-…"}.'
+    );
+  }
+  const { digest } = parsed.data;
+
+  const prepared = getPreparedChangeSet(digest);
+  if (!prepared) {
+    return errResult(
+      "approval_mismatch",
+      `No prepared change with digest ${digest}.`,
+      "project.prepare_change first."
+    );
+  }
+  if (prepared.projectId !== pinned.projectId) {
+    return errResult(
+      "approval_mismatch",
+      `Digest ${digest} was prepared for a different Connected Project than '${pinned.projectName}'.`,
+      "Select the original project or prepare a new change here."
+    );
+  }
+  if (prepared.status === "used") {
+    return errResult(
+      "approval_mismatch",
+      "This single-use approval was already consumed.",
+      "Prepare a new change and get a fresh approval."
+    );
+  }
+  if (prepared.status === "rejected") {
+    return errResult(
+      "approval_required",
+      "The Operator rejected this digest.",
+      "Revise the change and prepare again."
+    );
+  }
+  if (prepared.status === "pending") {
+    return errResult(
+      "approval_required",
+      `Digest ${digest} is not approved yet.`,
+      "Poll marketingos.get_approval and wait for the Operator."
+    );
+  }
+
+  // An approval is a person saying yes to a diff against a specific state
+  // of the project. If the project moved after that, the approval no longer
+  // describes anything anyone agreed to — even though it says "approved".
+  const stale = await staleSnapshotRefusal(
+    sessionKey,
+    [...new Set(prepared.changeSet.operations.map(targetResource))],
+    "project.apply_change",
+    "project.get_snapshot, recompute, prepare again, get a fresh approval."
+  );
+  if (stale) return stale;
+  if (prepared.cursor !== pinned.cursor) {
+    return errResult(
+      "stale_snapshot",
+      "The project changed after this change was prepared; the approval no longer matches reality.",
+      "project.get_snapshot, recompute, prepare again, get a fresh approval."
+    );
+  }
+
+  // Consume before applying, deliberately. If the project write then fails,
+  // an approval has been spent and nothing was written — the host prepares
+  // again and a person looks again. The other order risks applying a change
+  // twice, and a wasted approval is the cheaper failure by far.
+  if (!consumeApproval(digest)) {
+    return errResult(
+      "approval_mismatch",
+      "This single-use approval was already consumed.",
+      "Prepare a new change and get a fresh approval."
+    );
+  }
+
+  let result: ApplyResponse;
+  try {
+    result = await applyAtProject(pinned.projectId, pinned.baseUrl, prepared);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    audit("ai-host", "changes.apply_failed", { digest, projectId: pinned.projectId, detail });
+    return errResult(
+      "temporarily_unavailable",
+      `The Connected Project did not apply the change: ${detail}. Nothing was written, and this approval is spent.`,
+      "project.get_snapshot, prepare the change again, and ask the Operator for a fresh approval."
+    );
+  }
+
+  const info = getDb()
+    .prepare(
+      `INSERT INTO write_receipts
+        (digest, project_id, applied_operations, resource_versions, next_cursor)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(
+      digest,
+      pinned.projectId,
+      result.applied,
+      JSON.stringify(result.resources),
+      result.cursor
+    );
+  const receipt = getReceiptForDigest(digest);
+  if (!receipt) throw new Error("write receipt did not persist");
+
+  audit("ai-host", "changes.applied", {
+    digest,
+    projectId: pinned.projectId,
+    receiptId: `rcpt-${Number(info.lastInsertRowid)}`,
+    applied: result.applied,
+    nextCursor: result.cursor,
+  });
+
+  return {
+    ok: true,
+    response: {
+      context: sessionContext(sessionKey),
+      writeReceipt: receipt,
+      note: "The change is applied and the approval is spent. Call project.get_snapshot to pin the new revision before reading or writing again.",
+    },
+  };
 }
