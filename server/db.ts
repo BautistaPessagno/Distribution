@@ -41,6 +41,27 @@ function migrate(d: Database.Database): void {
       action TEXT NOT NULL,
       detail TEXT NOT NULL DEFAULT '{}'
     );
+    CREATE TRIGGER IF NOT EXISTS audit_log_no_update
+    BEFORE UPDATE ON audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'audit_log is append-only');
+    END;
+    CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
+    BEFORE DELETE ON audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'audit_log is append-only');
+    END;
+    CREATE TABLE IF NOT EXISTS secrets (
+      reference TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      ciphertext BLOB NOT NULL,
+      nonce BLOB NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'revoked')),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
   `);
   d.prepare(
     "INSERT INTO meta (key, value) VALUES ('schema_version', '1') ON CONFLICT(key) DO NOTHING"
