@@ -1,7 +1,7 @@
 # Define the AI Host onboarding contract
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 10
 
 ## Question

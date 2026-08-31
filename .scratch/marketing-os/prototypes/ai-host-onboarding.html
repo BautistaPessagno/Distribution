@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Host onboarding contract — prototype</title>
+<style>
+  :root {
+    --accent: #1a6b54; --accent-soft: #e7f1ee;
+    --ink: #17201c; --muted: #68746f; --line: #e4e7e5;
+    --bg: #f5f6f5; --card: #ffffff;
+    --bad: #b42318; --bad-soft: #fdecec;
+    --warn: #92400e; --warn-soft: #fef3e2;
+    --call: #1d5ca8; --call-soft: #e5effa;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14.5px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 24px 90px; }
+  header h1 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); margin: 4px 0 0; max-width: 96ch; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 2px 8px; border-radius: 6px; background: var(--warn-soft); color: var(--warn); vertical-align: 3px; margin-left: 8px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
+
+  .scenarios { margin-top: 22px; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pills button { font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); cursor: pointer; color: var(--muted); }
+  .pills button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .scenario-blurb { color: var(--muted); margin: 12px 2px 12px; max-width: 100ch; }
+  .stepchips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stepchips button { font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); cursor: default; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .stepchips button .n { width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--muted); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  .stepchips button.done { opacity: .55; }
+  .stepchips button.done .n { background: var(--accent); color: #fff; }
+  .stepchips button.next { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; box-shadow: 0 1px 4px #1a6b5426; }
+  .stepchips button.next .n { background: var(--accent); color: #fff; }
+  .scenario-done { color: var(--accent); font-weight: 600; margin-top: 10px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 360px; gap: 20px; margin-top: 22px; align-items: start; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Transcript */
+  .transcript { max-height: 560px; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+  .entry { max-width: 92%; border-radius: 10px; padding: 9px 13px; font-size: 13px; }
+  .entry .who { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; opacity: .75; }
+  .entry.call { align-self: flex-start; background: var(--call-soft); color: #143c6b; }
+  .entry.call code { font-weight: 700; }
+  .entry.resp { align-self: flex-end; background: #fff; border: 1px solid var(--line); }
+  .entry.resp.err { background: var(--bad-soft); border-color: #f4cbc7; }
+  .entry.resp.warn-b { background: var(--warn-soft); border-color: #f2e2bf; }
+  .entry.op { align-self: center; background: #17201c; color: #fff; font-size: 12.5px; }
+  .entry.note { align-self: center; background: transparent; color: var(--muted); font-size: 12.5px; }
+  pre { margin: 4px 0 0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  .next-hint { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .entry.resp.err .next-hint { color: var(--bad); }
+
+  /* Actions */
+  .group { margin-bottom: 4px; }
+  .group + .group { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px; }
+  .group-label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  button.act { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); cursor: pointer; margin: 0 6px 8px 0; }
+  button.act:hover { border-color: var(--accent); color: var(--accent); }
+  button.act.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.act.primary:hover { background: #14543f; color: #fff; }
+  button.act.danger { color: var(--bad); }
+  button.act.danger:hover { border-color: var(--bad); }
+  button.act.host { border-color: #bcd2ec; background: var(--call-soft); color: #143c6b; }
+  button.act.host:hover { border-color: var(--call); }
+
+  .tag { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: #eef0ef; color: var(--muted); }
+  .tag.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+  .kv { font-size: 13px; }
+  .kv div { padding: 3px 0; border-bottom: 1px solid #f0f2f1; display: flex; justify-content: space-between; gap: 10px; }
+  .kv div span:first-child { color: var(--muted); }
+  .small { font-size: 12.5px; color: var(--muted); }
+  .approval-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #f0f2f1; font-size: 13px; flex-wrap: wrap; }
+  .approval-row code { font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI Host onboarding contract <span class="badge">PROTOTYPE · IN-MEMORY · RELOAD TO RESET</span></h1>
+    <p class="sub">Does this MCP contract feel right from the AI Host's seat? One connection scoped to the workspace, in-session project selection with guiding errors, onboard-then-goal-routing discovery, a 19-tool two-domain catalog, digest-keyed approvals that never transit the host, and inline base64 image return with a manual fallback. The left column is the host's session transcript; the right rail is you, the Operator, in the MarketingOS dashboard.</p>
+  </header>
+
+  <div class="card scenarios">
+    <h2>Guided walkthroughs</h2>
+    <div class="pills" id="tabs"></div>
+    <p class="scenario-blurb" id="blurb"></p>
+    <div class="stepchips" id="steps"></div>
+    <div id="scenarioDone"></div>
+  </div>
+
+  <div class="grid">
+    <div class="stack">
+      <div class="card">
+        <h2>AI Host session transcript</h2>
+        <div class="transcript" id="transcript"></div>
+      </div>
+      <div class="card">
+        <h2>AI Host — available calls</h2>
+        <div id="hostActions"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <h2>Gateway state</h2>
+        <div id="gatewayState"></div>
+      </div>
+      <div class="card">
+        <h2>Operator dashboard — approvals</h2>
+        <div id="approvals"></div>
+      </div>
+      <div class="card">
+        <h2>Operator dashboard — world events</h2>
+        <div id="worldActions"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Pure module: GatewaySim
+   Simulates the MarketingOS MCP gateway contract. No DOM access.
+   call(state, tool, args) -> { state, ok, response }
+   operator(state, action)  -> { state, ok, response }
+   This block is the liftable contract reference; the page is throwaway.
+   ============================================================ */
+const GatewaySim = (() => {
+  const CONTRACT_VERSION = "1.0";
+  const METHOD_LIBRARY_VERSION = "2026.08";
+  const MAX_ASSET_KB = 2048;
+
+  const CATALOG = {
+    "marketingos": ["onboard", "select_project", "get_method", "list_hooks", "list_pieces", "get_piece",
+      "create_piece", "update_piece", "check_piece", "render_preview", "set_piece_meta",
+      "register_asset", "create_work_order", "record_outcome", "get_approval"],
+    "project": ["get_snapshot", "get_resource", "prepare_change", "apply_change"]
+  };
+
+  const METHODS = {
+    "draft_creative_piece": {
+      method: "draft_creative_piece", version: "3", rubric: "hook-evidence-cta.v2",
+      steps: ["Read the Creative Brief and pinned Project Snapshot", "Choose one angle from approved claims only",
+        "create_piece, then update_piece in atomic batches (max 20 ops, baseVersion required)",
+        "check_piece, fix brand errors, submit for Operator review in the dashboard"],
+      outputSchema: { piece_id: "string", version: "number", open_findings: "string[]" }
+    },
+    "generate_image": {
+      method: "generate_image", version: "2", rubric: "grounded-image-prompt.v1",
+      steps: ["Compose the grounded prompt from snapshot facts, Brand Kit tokens, format, and negative constraints",
+        "Generate or edit the image with capabilities included in this AI Host — MarketingOS provides no model",
+        "Return the result via marketingos.register_asset with origin, prompt, lineage, and rights notes",
+        "If this host cannot send binary tool payloads, tell the Operator to upload manually; the piece stays 'prompt prepared' until an asset lands"],
+      outputSchema: { asset_id: "string", origin: "ai_host" }
+    },
+    "propose_project_write": {
+      method: "propose_project_write", version: "1", rubric: "two-phase-write.v1",
+      steps: ["Compute the Project Change Set against the pinned snapshot", "project.prepare_change returns a digest and exact diff",
+        "The Operator approves that digest in the MarketingOS dashboard — no grant token will be given to you",
+        "Poll marketingos.get_approval(digest), then project.apply_change(digest) exactly once"],
+      outputSchema: { receipt_id: "string" }
+    }
+  };
+
+  function initialState() {
+    return {
+      workspace: "MarketingOS — owner workspace",
+      onboarded: false,
+      activeProject: null,
+      snapshotStale: false,
+      projects: {
+        keepanalog: { name: "KeepAnalog", revision: 7, claims: ["Paper notes improve recall"], gaps: [] },
+        partnr: { name: "partnr", revision: 3, claims: ["Splits settle in one tap"], gaps: [{ resource: "audiences", state: "empty" }] },
+        vinylos: { name: "VinylOS", revision: 12, claims: ["Your shelf, digitized"], gaps: [] }
+      },
+      pieces: {}, nextPieceId: 1,
+      assets: [], nextAssetId: 1,
+      prepared: null,               // { digest, project, revision, summary, diff }
+      approvals: {},                // digest -> pending | approved | rejected | used
+      receipts: []
+    };
+  }
+
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const snapId = (s) => s.activeProject ? `snap-${s.activeProject}-r${s.projects[s.activeProject].revision}${s.snapshotStale ? "-STALE" : ""}` : null;
+  const ctx = (s) => ({ project: s.activeProject, snapshot: snapId(s), contract: CONTRACT_VERSION });
+  const err = (state, code, message, next) => ({ state, ok: false, response: { error: code, message, next } });
+
+  function call(prev, tool, args = {}) {
+    const state = clone(prev);
+    const [domain, name] = tool.split(".");
+    if (!CATALOG[domain] || !CATALOG[domain].includes(name))
+      return err(prev, "unsupported_capability", `Unknown tool ${tool}.`, `Valid tools: ${Object.entries(CATALOG).map(([d, ts]) => ts.map(t => d + "." + t).join(", ")).join(", ")}`);
+
+    // Session ritual: everything except onboard/select_project needs a selected project.
+    const exempt = ["marketingos.onboard", "marketingos.select_project"];
+    if (!exempt.includes(tool) && !state.activeProject)
+      return err(prev, "no_project_selected", "No Connected Project is selected on this connection.",
+        'Call marketingos.select_project({"project":"keepanalog"|"partnr"|"vinylos"}) first.');
+
+    const onboardWarning = !state.onboarded ? [{ warning: "onboarding_recommended", message: "This session has not called marketingos.onboard; you may be missing contract rules." }] : [];
+
+    switch (tool) {
+
+      case "marketingos.onboard": {
+        state.onboarded = true;
+        return { state, ok: true, response: {
+          workspace: state.workspace,
+          contractVersion: CONTRACT_VERSION,
+          methodLibraryVersion: METHOD_LIBRARY_VERSION,
+          startHere: [
+            "1. select_project — nothing project-scoped works before it",
+            "2. get_method(goal) — load only the method your current goal needs; there is no catalog dump",
+            "3. Every response echoes { project, snapshot }; if they are not what you expect, stop"
+          ],
+          rules: [
+            "You are the only provider of AI reasoning and generation; MarketingOS is deterministic",
+            "All project mutations are two-phase: prepare_change → Operator approves digest in dashboard → apply_change",
+            "No approval grant is ever given to you; approvals are keyed by the prepared digest",
+            "Generated images return through register_asset with origin ai_host, prompt, lineage, and rights notes",
+            "Never mix evidence or assets across Connected Projects; imports need explicit new provenance"
+          ],
+          tools: CATALOG,
+          exampleGoals: Object.keys(METHODS)
+        }};
+      }
+
+      case "marketingos.select_project": {
+        const p = state.projects[args.project];
+        if (!p) return err(prev, "unsupported_capability", `No Connected Project "${args.project}".`, `Available: ${Object.keys(state.projects).join(", ")}.`);
+        const switching = state.activeProject && state.activeProject !== args.project;
+        state.activeProject = args.project;
+        state.snapshotStale = false;
+        const notes = [];
+        if (switching && state.prepared && state.prepared.project !== args.project)
+          notes.push(`Prepared change ${state.prepared.digest} belongs to ${state.prepared.project}; it cannot be applied from this project.`);
+        return { state, ok: true, response: {
+          context: ctx(state),
+          snapshot: { id: snapId(state), revision: p.revision, takenAt: "just now" },
+          capabilities: ["structured-content-editing", "asset-upload"],
+          contextGaps: p.gaps,
+          notes: notes.concat(onboardWarning.map(w => w.message))
+        }};
+      }
+
+      case "marketingos.get_method": {
+        const m = METHODS[args.goal];
+        if (!m) return err(prev, "unknown_goal", `No method for goal "${args.goal}".`,
+          `Closest goals: ${Object.keys(METHODS).join(", ")}. Ask with one of these.`);
+        return { state, ok: true, response: { context: ctx(state), ...m, warnings: onboardWarning } };
+      }
+
+      case "project.get_snapshot": {
+        state.snapshotStale = false;
+        const p = state.projects[state.activeProject];
+        return { state, ok: true, response: { context: ctx(state), snapshot: { id: snapId(state), revision: p.revision, takenAt: "just now" }, contextGaps: p.gaps } };
+      }
+
+      case "project.get_resource": {
+        if (state.snapshotStale)
+          return err(prev, "stale_snapshot", `Snapshot ${snapId(state)} is stale; the project changed upstream.`, "Call project.get_snapshot to pin a fresh snapshot, then re-read.");
+        const p = state.projects[state.activeProject];
+        const resources = {
+          brand: { tokens: { "brand.primary": "#1A6B54", "font.display": "Marcellus" }, prohibited: ["competitor logos"] },
+          claims: p.claims.map(c => ({ text: c, status: "approved" })),
+          profile: { product: p.name, stage: "early" }
+        };
+        const r = resources[args.resource];
+        if (!r) return err(prev, "unsupported_capability", `Resource "${args.resource}" is not exposed.`, "Available here: brand, claims, profile.");
+        return { state, ok: true, response: { context: ctx(state), resource: args.resource, data: r, provenance: { snapshot: snapId(state) } } };
+      }
+
+      case "marketingos.list_hooks":
+        return { state, ok: true, response: { context: ctx(state), hooks: ["Contrarian stat", "Before/after", "Cost of inaction"] } };
+
+      case "marketingos.list_pieces":
+        return { state, ok: true, response: { context: ctx(state),
+          pieces: Object.values(state.pieces).filter(p => p.project === state.activeProject).map(p => ({ id: p.id, title: p.title, status: p.status, version: p.version })) } };
+
+      case "marketingos.get_piece": {
+        const p = state.pieces[args.id];
+        if (!p || p.project !== state.activeProject) return err(prev, "unsupported_capability", `No piece #${args.id} in ${state.activeProject}.`, "marketingos.list_pieces shows what exists here.");
+        return { state, ok: true, response: { context: ctx(state), piece: p } };
+      }
+
+      case "marketingos.create_piece": {
+        const id = state.nextPieceId++;
+        state.pieces[id] = { id, project: state.activeProject, snapshot: snapId(state), title: args.title || "Untitled", format: args.format || "4:5", status: "drafting", version: 1, imageState: null };
+        return { state, ok: true, response: { context: ctx(state), piece: { id, baseVersion: 1 },
+          note: "Bound to the pinned snapshot; edits use atomic batches with baseVersion (see draft_creative_piece method)." } };
+      }
+
+      case "marketingos.update_piece": {
+        const p = state.pieces[args.id];
+        if (!p || p.project !== state.activeProject) return err(prev, "unsupported_capability", `No piece #${args.id} in ${state.activeProject}.`, "marketingos.list_pieces shows what exists here.");
+        if (args.baseVersion !== p.version)
+          return err(prev, "version_conflict", `Batch computed against v${args.baseVersion}, piece is at v${p.version}. Nothing changed.`, "marketingos.get_piece, then resend against the fresh version.");
+        p.version += 1;
+        return { state, ok: true, response: { context: ctx(state), piece: { id: p.id, version: p.version }, applied: (args.ops || []).length + " op(s)" } };
+      }
+
+      case "marketingos.check_piece": {
+        const p = state.pieces[args.id];
+        if (!p || p.project !== state.activeProject) return err(prev, "unsupported_capability", `No piece #${args.id} in ${state.activeProject}.`, "marketingos.list_pieces shows what exists here.");
+        return { state, ok: true, response: { context: ctx(state), check_brand: { errors: [], warnings: [] }, check_quality: ["Slide 1 hierarchy could be stronger (advisory)"] } };
+      }
+
+      case "marketingos.render_preview": {
+        const p = state.pieces[args.id];
+        if (!p || p.project !== state.activeProject) return err(prev, "unsupported_capability", `No piece #${args.id} in ${state.activeProject}.`, "marketingos.list_pieces shows what exists here.");
+        return { state, ok: true, response: { context: ctx(state), preview: `preview://piece-${p.id}-v${p.version}.png`, note: "Rendered deterministically from the same document the editor uses." } };
+      }
+
+      case "marketingos.set_piece_meta": {
+        const p = state.pieces[args.id];
+        if (!p || p.project !== state.activeProject) return err(prev, "unsupported_capability", `No piece #${args.id} in ${state.activeProject}.`, "marketingos.list_pieces shows what exists here.");
+        Object.assign(p, args.meta || {});
+        return { state, ok: true, response: { context: ctx(state), piece: { id: p.id, ...args.meta } } };
+      }
+
+      case "marketingos.register_asset": {
+        if (!args.origin) return err(prev, "rights_missing", "origin is required (ai_host, operator_upload, or project_import).", "Resend with origin, prompt (if generated), sourceAssets, and rights notes.");
+        if (args.origin === "ai_host" && !args.prompt)
+          return err(prev, "rights_missing", "Generated assets must carry the prompt and source-asset lineage.", "Resend with prompt and sourceAssets.");
+        if (!args.bytesBase64) {
+          if (args.pieceId && state.pieces[args.pieceId]) state.pieces[args.pieceId].imageState = "prompt_prepared";
+          return { state, ok: false, response: { error: "asset_bytes_missing",
+            message: "No binary payload arrived. If this host cannot send binary tool payloads, the handoff stays manual. The piece now shows 'prompt prepared'.",
+            next: "Tell the Operator to use dashboard manual upload; the piece stays 'prompt prepared' until an asset actually lands." } };
+        }
+        if ((args.sizeKB || 0) > MAX_ASSET_KB) {
+          if (args.pieceId && state.pieces[args.pieceId]) state.pieces[args.pieceId].imageState = "prompt_prepared";
+          return { state, ok: false, response: { error: "asset_too_large",
+            message: `Inline payload of ${args.sizeKB}KB exceeds the ${MAX_ASSET_KB}KB cap. The piece now shows 'prompt prepared'.`,
+            next: "Fall back to dashboard manual upload for this file." } };
+        }
+        const id = "asset-" + state.nextAssetId++;
+        state.assets.push({ id, project: state.activeProject, origin: args.origin, prompt: args.prompt || null, sizeKB: args.sizeKB || 0, rights: args.rights || "unreviewed" });
+        if (args.pieceId && state.pieces[args.pieceId]) state.pieces[args.pieceId].imageState = "asset_attached:" + id;
+        return { state, ok: true, response: { context: ctx(state), asset: { id, origin: args.origin },
+          note: "MarketingOS recorded the handoff; it does not claim it generated this image." } };
+      }
+
+      case "marketingos.create_work_order":
+        return { state, ok: true, response: { context: ctx(state), workOrder: { id: "wo-1", status: "proposed" }, note: "Human work; needs Operator approval before it is assigned." } };
+
+      case "marketingos.record_outcome":
+        return { state, ok: true, response: { context: ctx(state), outcome: { recorded: true, note: args.note || "" } } };
+
+      case "project.prepare_change": {
+        if (state.snapshotStale)
+          return err(prev, "stale_snapshot", `Snapshot ${snapId(state)} is stale; the project changed upstream.`, "Call project.get_snapshot, recompute the change, then prepare again.");
+        const digest = "chg-" + Math.abs(JSON.stringify(args).split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)).toString(16).slice(0, 6);
+        state.prepared = { digest, project: state.activeProject, revision: state.projects[state.activeProject].revision, summary: args.summary || "unnamed change", diff: args.diff || "+ added approved claim" };
+        state.approvals[digest] = "pending";
+        return { state, ok: true, response: { context: ctx(state),
+          prepared: { digest, diff: state.prepared.diff, validations: "passed", warnings: [] },
+          approval: "required",
+          next: `The Operator must approve digest ${digest} in the MarketingOS dashboard. Poll marketingos.get_approval — no grant token will be given to you.` } };
+      }
+
+      case "marketingos.get_approval": {
+        const status = state.approvals[args.digest];
+        if (!status) return err(prev, "approval_mismatch", `No prepared change with digest ${args.digest}.`, "project.prepare_change first.");
+        return { state, ok: true, response: { context: ctx(state), digest: args.digest, status,
+          next: status === "approved" ? `project.apply_change({"digest":"${args.digest}"}) — exactly once.` :
+                status === "pending" ? "Wait for the Operator; poll again." :
+                status === "used" ? "This approval was consumed; prepare a new change." : "Rejected; revise and prepare a new change." } };
+      }
+
+      case "project.apply_change": {
+        const status = state.approvals[args.digest];
+        if (!status) return err(prev, "approval_mismatch", `No prepared change with digest ${args.digest}.`, "project.prepare_change first.");
+        if (!state.prepared || state.prepared.digest !== args.digest)
+          return err(prev, "approval_mismatch", "The prepared change no longer matches this digest.", "Prepare a fresh change against the current snapshot.");
+        if (state.prepared.project !== state.activeProject)
+          return err(prev, "approval_mismatch", `Digest ${args.digest} was prepared for ${state.prepared.project}, but ${state.activeProject} is selected.`, "Select the original project or prepare a new change here.");
+        if (status === "used") return err(prev, "approval_mismatch", "This single-use approval was already consumed.", "Prepare a new change and get a fresh approval.");
+        if (status === "rejected") return err(prev, "approval_required", "The Operator rejected this digest.", "Revise the change and prepare again.");
+        if (status === "pending") return err(prev, "approval_required", `Digest ${args.digest} is not approved yet.`, "Poll marketingos.get_approval and wait for the Operator.");
+        if (state.snapshotStale || state.prepared.revision !== state.projects[state.activeProject].revision)
+          return err(prev, "stale_snapshot", "The project changed after this change was prepared; the approval no longer matches reality.", "project.get_snapshot, recompute, prepare again, get a fresh approval.");
+        state.approvals[args.digest] = "used";
+        const p = state.projects[state.activeProject];
+        p.revision += 1;
+        state.prepared = null;
+        const receipt = { receiptId: "rcpt-" + p.revision, applied: 1, newRevision: p.revision, nextCursor: "cur-" + p.revision };
+        state.receipts.push(receipt);
+        return { state, ok: true, response: { context: ctx(state), writeReceipt: receipt,
+          note: "Snapshot advanced to the new revision; report this receipt back to MarketingOS conversation state." } };
+      }
+    }
+    return err(prev, "unsupported_capability", `Tool ${tool} not simulated.`, "");
+  }
+
+  function operator(prev, action) {
+    const state = clone(prev);
+    switch (action.type) {
+      case "APPROVE": {
+        if (state.approvals[action.digest] !== "pending") return err(prev, "invalid", "Nothing pending under that digest.", "");
+        state.approvals[action.digest] = "approved";
+        return { state, ok: true, response: { operator: `Approved digest ${action.digest} in the dashboard (short-lived, single-use, digest-bound).` } };
+      }
+      case "REJECT": {
+        if (state.approvals[action.digest] !== "pending") return err(prev, "invalid", "Nothing pending under that digest.", "");
+        state.approvals[action.digest] = "rejected";
+        return { state, ok: true, response: { operator: `Rejected digest ${action.digest}.` } };
+      }
+      case "UPSTREAM_CHANGE": {
+        const p = state.projects[action.project];
+        p.revision += 1;
+        if (state.activeProject === action.project) state.snapshotStale = true;
+        return { state, ok: true, response: { operator: `${p.name} changed upstream (now r${p.revision}). Any pinned snapshot for it is stale.` } };
+      }
+      case "MANUAL_UPLOAD": {
+        const id = "asset-" + state.nextAssetId++;
+        state.assets.push({ id, project: state.activeProject, origin: "operator_upload", prompt: action.prompt || null, sizeKB: action.sizeKB || 900, rights: "operator_confirmed" });
+        if (action.pieceId && state.pieces[action.pieceId]) state.pieces[action.pieceId].imageState = "asset_attached:" + id;
+        return { state, ok: true, response: { operator: `Operator uploaded ${id} through the dashboard (manual fallback); lineage recorded from the prepared prompt.` } };
+      }
+    }
+    return err(prev, "invalid", "Unknown operator action.", "");
+  }
+
+  return { initialState, call, operator, CATALOG, METHODS, CONTRACT_VERSION };
+})();
+
+/* ============================================================
+   Throwaway page shell.
+   ============================================================ */
+let state = GatewaySim.initialState();
+let transcript = [];
+
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pretty = (o) => esc(JSON.stringify(o, null, 2));
+
+function hostCall(tool, args, label) {
+  transcript.push({ kind: "call", tool, args, label });
+  const res = GatewaySim.call(state, tool, args);
+  state = res.state;
+  transcript.push({ kind: "resp", ok: res.ok, body: res.response });
+  render();
+  return res.ok;
+}
+
+function operatorAct(action, label) {
+  const res = GatewaySim.operator(state, action);
+  state = res.state;
+  transcript.push({ kind: "op", text: res.ok ? res.response.operator : res.response.message, label });
+  render();
+  return res.ok;
+}
+
+/* ---------- rendering ---------- */
+function renderTranscript() {
+  const el = document.getElementById("transcript");
+  el.innerHTML = transcript.map(e => {
+    if (e.kind === "call")
+      return `<div class="entry call"><div class="who">AI Host → gateway${e.label ? " · " + esc(e.label) : ""}</div><code>${esc(e.tool)}</code><pre>${pretty(e.args)}</pre></div>`;
+    if (e.kind === "resp") {
+      const isErr = !e.ok;
+      const hasWarn = e.body && (e.body.warnings && e.body.warnings.length || (e.body.notes || []).some(n => /onboard/i.test(n)));
+      const next = e.body && e.body.next ? `<div class="next-hint">next → ${esc(e.body.next)}</div>` : "";
+      const body = { ...e.body }; delete body.next;
+      return `<div class="entry resp ${isErr ? "err" : hasWarn ? "warn-b" : ""}"><div class="who">gateway → AI Host ${isErr ? "· ERROR " + esc(e.body.error) : ""}</div><pre>${pretty(body)}</pre>${next}</div>`;
+    }
+    if (e.kind === "op")
+      return `<div class="entry op">🧑 Operator · ${esc(e.text)}</div>`;
+    return `<div class="entry note">${esc(e.text)}</div>`;
+  }).join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderGatewayState() {
+  const pending = Object.entries(state.approvals).filter(([, s]) => s === "pending");
+  document.getElementById("gatewayState").innerHTML = `
+    <div class="kv">
+      <div><span>Workspace</span><span>${esc(state.workspace)}</span></div>
+      <div><span>Contract</span><span>v${GatewaySim.CONTRACT_VERSION}</span></div>
+      <div><span>Onboarded</span><span>${state.onboarded ? '<span class="tag on">yes</span>' : '<span class="tag warn">not yet</span>'}</span></div>
+      <div><span>Active project</span><span>${state.activeProject ? `<span class="tag on">${esc(state.projects[state.activeProject].name)}</span>` : '<span class="tag bad">none selected</span>'}</span></div>
+      <div><span>Snapshot</span><span>${state.activeProject ? `<span class="tag ${state.snapshotStale ? "bad" : ""}">${state.snapshotStale ? "STALE" : "snap-" + state.activeProject + "-r" + state.projects[state.activeProject].revision}</span>` : "—"}</span></div>
+      <div><span>Prepared change</span><span>${state.prepared ? `<code>${state.prepared.digest}</code> (${esc(state.prepared.project)})` : "—"}</span></div>
+      <div><span>Pieces</span><span>${Object.values(state.pieces).map(p => `#${p.id} v${p.version}${p.imageState ? " · " + esc(p.imageState) : ""}`).join(", ") || "—"}</span></div>
+      <div><span>Assets</span><span>${state.assets.map(a => `${a.id} (${a.origin})`).join(", ") || "—"}</span></div>
+      <div><span>Write receipts</span><span>${state.receipts.map(r => r.receiptId).join(", ") || "—"}</span></div>
+    </div>
+    <p class="small" style="margin-bottom:0">Projects: ${Object.entries(state.projects).map(([k, p]) => `${p.name} r${p.revision}`).join(" · ")}</p>`;
+  document.getElementById("approvals").innerHTML = Object.keys(state.approvals).length ?
+    Object.entries(state.approvals).map(([d, s]) => `
+      <div class="approval-row">
+        <code>${d}</code>
+        <span class="tag ${s === "pending" ? "warn" : s === "approved" ? "on" : s === "used" ? "" : "bad"}">${s}</span>
+        ${s === "pending" ? `
+          <button class="act primary" onclick='operatorAct({type:"APPROVE",digest:"${d}"}, "Approve")'>Approve</button>
+          <button class="act danger" onclick='operatorAct({type:"REJECT",digest:"${d}"}, "Reject")'>Reject</button>` : ""}
+      </div>`).join("")
+    : '<p class="small" style="margin:0">Nothing awaiting approval. The digest appears here when the host calls project.prepare_change.</p>';
+}
+
+let dynCalls = [];
+function runDynCall(i) { const c = dynCalls[i](); hostCall(c.tool, c.args, c.label); }
+
+function renderHostActions() {
+  dynCalls = [];
+  const dyn = (label, fn, cls = "host") => { dynCalls.push(fn); return `<button class="act ${cls}" onclick="runDynCall(${dynCalls.length - 1})">${esc(label)}</button>`; };
+  const piece = Object.values(state.pieces).slice(-1)[0];
+  const digest = state.prepared ? state.prepared.digest : (Object.keys(state.approvals).slice(-1)[0] || "chg-????");
+  document.getElementById("hostActions").innerHTML = `
+    <div class="group"><div class="group-label">Session ritual</div>
+      ${dyn("onboard", () => ({ tool: "marketingos.onboard", args: {} }))}
+      ${dyn("select_project · KeepAnalog", () => ({ tool: "marketingos.select_project", args: { project: "keepanalog" } }))}
+      ${dyn("select_project · partnr", () => ({ tool: "marketingos.select_project", args: { project: "partnr" } }))}
+      ${dyn("get_method · draft_creative_piece", () => ({ tool: "marketingos.get_method", args: { goal: "draft_creative_piece" } }))}
+      ${dyn("get_method · unknown goal", () => ({ tool: "marketingos.get_method", args: { goal: "make_it_viral" } }), "host")}
+    </div>
+    <div class="group"><div class="group-label">Read & draft</div>
+      ${dyn("get_resource · claims", () => ({ tool: "project.get_resource", args: { resource: "claims" } }))}
+      ${dyn("get_snapshot (refresh)", () => ({ tool: "project.get_snapshot", args: {} }))}
+      ${dyn("list_pieces", () => ({ tool: "marketingos.list_pieces", args: {} }))}
+      ${dyn("create_piece", () => ({ tool: "marketingos.create_piece", args: { title: "Launch teaser", format: "4:5" } }))}
+      ${piece ? dyn(`update_piece #${piece.id} (fresh v${piece.version})`, () => { const p = Object.values(state.pieces).slice(-1)[0]; return { tool: "marketingos.update_piece", args: { id: p.id, baseVersion: p.version, ops: [{ op: "set_text", layer: 1, value: "New headline" }] } }; }) : ""}
+      ${piece ? dyn(`update_piece #${piece.id} (stale v${Math.max(1, piece.version - 1)})`, () => { const p = Object.values(state.pieces).slice(-1)[0]; return { tool: "marketingos.update_piece", args: { id: p.id, baseVersion: Math.max(1, p.version - 1), ops: [{ op: "set_text", layer: 1, value: "clobber attempt" }] } }; }, "host") : ""}
+    </div>
+    <div class="group"><div class="group-label">Image handoff</div>
+      ${dyn("get_method · generate_image", () => ({ tool: "marketingos.get_method", args: { goal: "generate_image" } }))}
+      ${dyn("register_asset · no binary payload", () => ({ tool: "marketingos.register_asset", args: { origin: "ai_host", prompt: "Grounded prompt v1", pieceId: piece ? piece.id : 1 } }))}
+      ${dyn("register_asset · base64 900KB", () => ({ tool: "marketingos.register_asset", args: { origin: "ai_host", prompt: "Grounded prompt v1", bytesBase64: "iVBORw0…", sizeKB: 900, rights: "generated for this project", pieceId: piece ? piece.id : 1 } }))}
+      ${dyn("register_asset · base64 4MB (over cap)", () => ({ tool: "marketingos.register_asset", args: { origin: "ai_host", prompt: "Grounded prompt v1", bytesBase64: "iVBORw0…", sizeKB: 4096, pieceId: piece ? piece.id : 1 } }))}
+      ${dyn("register_asset · missing origin", () => ({ tool: "marketingos.register_asset", args: { bytesBase64: "iVBORw0…", sizeKB: 100 } }))}
+    </div>
+    <div class="group"><div class="group-label">Two-phase project write</div>
+      ${dyn("get_method · propose_project_write", () => ({ tool: "marketingos.get_method", args: { goal: "propose_project_write" } }))}
+      ${dyn("prepare_change", () => ({ tool: "project.prepare_change", args: { summary: "Add approved claim", diff: '+ claim: "Recall improves 29% on paper"' } }))}
+      ${dyn("get_approval", () => ({ tool: "marketingos.get_approval", args: { digest } }))}
+      ${dyn("apply_change", () => ({ tool: "project.apply_change", args: { digest } }))}
+    </div>`;
+  document.getElementById("worldActions").innerHTML = `
+    <button class="act" onclick='operatorAct({type:"UPSTREAM_CHANGE",project: state.activeProject || "keepanalog"}, "Upstream change")'>Project changes upstream</button>
+    <button class="act" onclick='operatorAct({type:"MANUAL_UPLOAD",pieceId:(Object.values(state.pieces).slice(-1)[0]||{}).id, prompt:"Grounded prompt v1"}, "Manual upload")'>Manual upload (fallback)</button>
+    <p class="small" style="margin-bottom:0">These simulate the world outside the MCP session: the Connected Project shipping a change, or you dragging a file into the dashboard.</p>`;
+}
+
+/* ---------- Walkthroughs ---------- */
+const H = (tool, args, label) => () => hostCall(tool, args, label);
+const scenarios = [
+  {
+    name: "1 · Cold start",
+    blurb: "A brand-new AI Host connects knowing nothing. It pokes a work tool first and gets a guiding error, not a lecture. Then the ritual: onboard for the compact rules, select_project to pin a snapshot, get_method to load only what the goal needs. Note the unknown-goal reply: routing suggestions, not failure.",
+    steps: () => [
+      ["Host jumps straight to list_pieces → guided", H("marketingos.list_pieces", {}, "Cold call")],
+      ["onboard → compact guide, rules, tool map", H("marketingos.onboard", {}, null)],
+      ["select_project KeepAnalog → snapshot pinned", H("marketingos.select_project", { project: "keepanalog" }, null)],
+      ["get_method with an unknown goal → routed", H("marketingos.get_method", { goal: "make_it_viral" }, null)],
+      ["get_method draft_creative_piece → just that method", H("marketingos.get_method", { goal: "draft_creative_piece" }, null)]
+    ]
+  },
+  {
+    name: "2 · Draft with evidence",
+    blurb: "The host reads approved claims from the pinned snapshot (with provenance), creates a piece bound to that snapshot, edits it with a baseVersion batch, and gets a version_conflict when it reuses a stale one. The Creative Piece workflow's concurrency rules, seen from the host's seat.",
+    steps: () => [
+      ["onboard + select KeepAnalog", () => { hostCall("marketingos.onboard", {}); return hostCall("marketingos.select_project", { project: "keepanalog" }); }],
+      ["get_resource claims → approved claims + provenance", H("project.get_resource", { resource: "claims" }, null)],
+      ["create_piece → bound to the snapshot", H("marketingos.create_piece", { title: "Launch teaser", format: "4:5" }, null)],
+      ["update_piece with baseVersion 1 → v2", () => hostCall("marketingos.update_piece", { id: 1, baseVersion: 1, ops: [{ op: "set_text", layer: 1, value: "Ship your ideas on paper" }] })],
+      ["update_piece with baseVersion 1 again → conflict", () => hostCall("marketingos.update_piece", { id: 1, baseVersion: 1, ops: [{ op: "set_text", layer: 1, value: "clobber" }] })],
+      ["check_piece → advisory quality finding", H("marketingos.check_piece", { id: 1 }, null)]
+    ]
+  },
+  {
+    name: "3 · Image handoff",
+    blurb: "The host loads the generate_image method (grounded prompt recipe), then tries to return the result three ways: with no binary payload (the piece drops to 'prompt prepared' and the Operator is pointed at manual upload), with a 4MB file (over the inline cap, same fallback), and with a 900KB base64 payload (accepted, origin ai_host, lineage recorded). Finish with the manual-upload fallback from the dashboard rail.",
+    steps: () => [
+      ["onboard + select KeepAnalog + create piece", () => { hostCall("marketingos.onboard", {}); hostCall("marketingos.select_project", { project: "keepanalog" }); return hostCall("marketingos.create_piece", { title: "Hero image post", format: "1:1" }); }],
+      ["get_method generate_image → prompt recipe", H("marketingos.get_method", { goal: "generate_image" }, null)],
+      ["register_asset without bytes → manual fallback", () => hostCall("marketingos.register_asset", { origin: "ai_host", prompt: "Grounded prompt v1", pieceId: 1 })],
+      ["register_asset 4MB → over inline cap", () => hostCall("marketingos.register_asset", { origin: "ai_host", prompt: "Grounded prompt v1", bytesBase64: "iVBORw0…", sizeKB: 4096, pieceId: 1 })],
+      ["register_asset 900KB base64 → accepted", () => hostCall("marketingos.register_asset", { origin: "ai_host", prompt: "Grounded prompt v1", bytesBase64: "iVBORw0…", sizeKB: 900, rights: "generated for this project", pieceId: 1 })],
+      ["register_asset with no origin → rights_missing", () => hostCall("marketingos.register_asset", { bytesBase64: "iVBORw0…", sizeKB: 100 })],
+      ["Operator manual upload (dashboard fallback)", () => operatorAct({ type: "MANUAL_UPLOAD", pieceId: 1, prompt: "Grounded prompt v1" }, "Manual upload")]
+    ]
+  },
+  {
+    name: "4 · Two-phase write",
+    blurb: "The host prepares a Project Change Set and receives a digest, not a token. apply_change before approval fails with approval_required. You approve the digest in the dashboard rail; apply_change then returns a Write Receipt. A second apply fails: the approval was single-use.",
+    steps: () => [
+      ["onboard + select KeepAnalog", () => { hostCall("marketingos.onboard", {}); return hostCall("marketingos.select_project", { project: "keepanalog" }); }],
+      ["get_method propose_project_write", H("marketingos.get_method", { goal: "propose_project_write" }, null)],
+      ["prepare_change → digest + exact diff", H("project.prepare_change", { summary: "Add approved claim", diff: '+ claim: "Recall improves 29% on paper"' }, null)],
+      ["apply_change now → approval_required", () => hostCall("project.apply_change", { digest: state.prepared.digest })],
+      ["get_approval → still pending", () => hostCall("marketingos.get_approval", { digest: state.prepared.digest })],
+      ["Operator approves the digest →", () => operatorAct({ type: "APPROVE", digest: state.prepared.digest }, "Approve")],
+      ["get_approval → approved, apply exactly once", () => hostCall("marketingos.get_approval", { digest: state.prepared.digest })],
+      ["apply_change → Write Receipt", () => hostCall("project.apply_change", { digest: Object.keys(state.approvals).slice(-1)[0] })],
+      ["apply_change again → single-use, refused", () => hostCall("project.apply_change", { digest: Object.keys(state.approvals).slice(-1)[0] })]
+    ]
+  },
+  {
+    name: "5 · Stale & cross-project",
+    blurb: "The world moves mid-session. A prepared change survives neither an upstream project change (stale_snapshot even after approval) nor a project switch (approval_mismatch: the digest is bound to its project). The recovery path is always spelled out in the error. Nothing ever merges silently.",
+    steps: () => [
+      ["onboard + select KeepAnalog", () => { hostCall("marketingos.onboard", {}); return hostCall("marketingos.select_project", { project: "keepanalog" }); }],
+      ["prepare_change → digest pending", H("project.prepare_change", { summary: "Update profile copy", diff: "~ profile.tagline" }, null)],
+      ["KeepAnalog ships a change upstream", () => operatorAct({ type: "UPSTREAM_CHANGE", project: "keepanalog" }, "Upstream change")],
+      ["Operator approves anyway", () => operatorAct({ type: "APPROVE", digest: state.prepared.digest }, "Approve")],
+      ["apply_change → stale_snapshot, blocked", () => hostCall("project.apply_change", { digest: state.prepared.digest })],
+      ["get_snapshot → fresh pin", H("project.get_snapshot", {}, null)],
+      ["prepare_change again → new digest", H("project.prepare_change", { summary: "Update profile copy (recomputed)", diff: "~ profile.tagline v2" }, null)],
+      ["Host switches to partnr mid-flight", H("marketingos.select_project", { project: "partnr" }, null)],
+      ["apply_change from partnr → approval_mismatch", () => hostCall("project.apply_change", { digest: state.prepared ? state.prepared.digest : Object.keys(state.approvals).slice(-1)[0] })],
+      ["partnr snapshot shows its own Context Gap", H("project.get_resource", { resource: "claims" }, null)]
+    ]
+  }
+];
+
+let activeScenario = 0, scenarioStep = 0;
+
+function startScenario(i) {
+  activeScenario = i; scenarioStep = 0;
+  state = GatewaySim.initialState();
+  transcript = [{ kind: "note", text: `— Fresh connection for walkthrough “${scenarios[i].name}” —` }];
+  render();
+}
+function runStep(i) {
+  if (i !== scenarioStep) return;
+  const st = scenarios[activeScenario].steps()[i];
+  st[1]();
+  scenarioStep = i + 1;
+  render();
+}
+function renderScenario() {
+  document.getElementById("tabs").innerHTML = scenarios.map((s, i) =>
+    `<button class="${i === activeScenario ? "active" : ""}" onclick="startScenario(${i})">${esc(s.name)}</button>`).join("");
+  const s = scenarios[activeScenario];
+  document.getElementById("blurb").textContent = s.blurb;
+  document.getElementById("steps").innerHTML = s.steps().map((st, i) =>
+    `<button class="${i < scenarioStep ? "done" : i === scenarioStep ? "next" : ""}" ${i === scenarioStep ? `onclick="runStep(${i})"` : ""}><span class="n">${i < scenarioStep ? "✓" : i + 1}</span>${esc(st[0])}</button>`).join("");
+  document.getElementById("scenarioDone").innerHTML =
+    scenarioStep >= s.steps().length ? '<p class="scenario-done">Walkthrough complete. Keep driving from the call panel, or pick another tab (each tab resets the connection).</p>' : "";
+}
+
+function render() {
+  renderTranscript();
+  renderGatewayState();
+  renderHostActions();
+  renderScenario();
+}
+
+startScenario(0);
+</script>
+</body>
+</html>
