@@ -64,8 +64,13 @@ interface Piece {
   snapshot: string;
   doc: PieceDoc;
   docVersion: number;
+  pinnedKitVersion: number | null;
+  brandOutdated: boolean;
+  plannedDate: string | null;
   createdAt: string;
   kit: BrandKit;
+  /** The Operator moves this piece can take right now, decided server-side. */
+  operatorMoves: string[];
 }
 
 interface PieceVersion {
@@ -85,9 +90,15 @@ interface CheckFinding {
   message: string;
 }
 
+interface NeedToken {
+  where: string;
+  token: string;
+}
+
 interface CheckReports {
   brand: { kitVersion: number; docVersion: number; errors: CheckFinding[]; warnings: CheckFinding[] };
   quality: { docVersion: number; advisory: true; findings: CheckFinding[] };
+  approval: { brandErrors: CheckFinding[]; needTokens: NeedToken[] };
 }
 
 function layerLabel(layer: PieceLayer): string {
@@ -182,6 +193,101 @@ function BrandKitPanel({
       <button className="action-quiet" disabled={!dirty || saving} onClick={() => void save()}>
         {saving ? "Saving…" : "Save Brand Kit"}
       </button>
+      {problem && <p className="error-text">{problem}</p>}
+    </div>
+  );
+}
+
+const MOVE_LABELS: Record<string, string> = {
+  approve: "Approve",
+  "request-changes": "Request changes",
+  reapprove: "Re-approve against the current kit",
+  reopen: "Reopen to drafting",
+};
+
+// The Operator's half of the lifecycle. The AI Host drafts, submits, and
+// can reopen; approving is a person's act, so it lives only here. Which
+// moves apply is decided server-side and arrives on the piece.
+function LifecyclePanel({
+  piece,
+  checks,
+  onMoved,
+}: {
+  piece: Piece;
+  checks: CheckReports | null;
+  onMoved: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const move = useCallback(
+    async (action: string) => {
+      setBusy(true);
+      setProblem(null);
+      setNote(null);
+      try {
+        const res = await fetch(`/api/pieces/${piece.id}/${action}`, { method: "POST" });
+        const data = (await res.json()) as { message?: string; error?: string; note?: string };
+        if (!res.ok) throw new Error(data.message ?? data.error ?? "The move was refused");
+        setNote(data.note ?? null);
+        onMoved();
+      } catch (err) {
+        setProblem(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onMoved, piece.id]
+  );
+
+  const blockers = checks
+    ? checks.approval.brandErrors.length + checks.approval.needTokens.length
+    : null;
+
+  return (
+    <div className="body-text">
+      <strong>Lifecycle</strong> <span className="tag">{piece.status}</span>{" "}
+      {piece.pinnedKitVersion !== null && (
+        <span className="tag tag-good">approved against kit v{piece.pinnedKitVersion}</span>
+      )}{" "}
+      {piece.brandOutdated && (
+        <span className="tag tag-warn">brand-outdated — re-approve to re-pin</span>
+      )}
+      {piece.status === "review" && (
+        <p>
+          {blockers === null
+            ? "Checking what blocks approval…"
+            : blockers === 0
+              ? "Nothing blocks approval. Quality findings, if any, only advise."
+              : `${blockers} blocker(s) must be fixed before this can be approved.`}
+        </p>
+      )}
+      {checks && checks.approval.needTokens.length > 0 && (
+        <ul>
+          {checks.approval.needTokens.map((n, i) => (
+            <li key={i}>
+              <span className="tag tag-bad">unsupported claim</span> {n.where} still carries{" "}
+              <span className="mono">{n.token}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        {piece.operatorMoves.map((action) => (
+          <button
+            key={action}
+            className="action-quiet"
+            disabled={busy}
+            onClick={() => void move(action)}
+            style={{ marginRight: "var(--space-1)" }}
+          >
+            {MOVE_LABELS[action] ?? action}
+          </button>
+        ))}
+        {piece.operatorMoves.length === 0 && <p>No Operator move applies while {piece.status}.</p>}
+      </div>
+      {note && <p>{note}</p>}
       {problem && <p className="error-text">{problem}</p>}
     </div>
   );
@@ -332,10 +438,12 @@ export default function StudioPage() {
                 <div>
                   <strong>{p.title}</strong> <span className="tag">{p.status}</span>{" "}
                   <span className="tag">{p.doc.format}</span>{" "}
-                  <span className="tag">{p.projectName}</span>
+                  <span className="tag">{p.projectName}</span>{" "}
+                  {p.brandOutdated && <span className="tag tag-warn">brand-outdated</span>}
                   <div className="body-text">
                     {p.doc.slides.length} slide{p.doc.slides.length === 1 ? "" : "s"} · doc v
-                    {p.docVersion} · kit v{p.kit.version} · snapshot{" "}
+                    {p.docVersion} · kit v{p.kit.version}
+                    {p.pinnedKitVersion !== null ? ` (pinned v${p.pinnedKitVersion})` : ""} · snapshot{" "}
                     <span className="mono">{p.snapshot}</span> ·{" "}
                     {new Date(p.createdAt).toLocaleString()}
                   </div>
@@ -362,6 +470,7 @@ export default function StudioPage() {
                           ))}
                         </ul>
                       </div>
+                      <LifecyclePanel piece={p} checks={checks} onMoved={kitChanged} />
                       <ChecksPanel checks={checks} />
                       <BrandKitPanel kit={p.kit} onChanged={kitChanged} />
                       <div className="body-text">

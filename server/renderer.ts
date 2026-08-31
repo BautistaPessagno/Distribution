@@ -6,9 +6,12 @@
 // for any version in a piece's history; `exportPiece` screenshots that same
 // HTML in headless Chromium, one PNG per slide, plus a captions file, into a
 // bundle recorded with the doc version and kit version it was rendered from.
-// Rendering resolves Brand Kit tokens at render time (ticket 12), so the
-// bundle records the kit version it was rendered through alongside the doc
-// version.
+// Rendering resolves Brand Kit tokens at render time (ticket 12). The
+// preview always uses the project's current kit, so a kit change is visible
+// immediately — that is how the Operator sees what moved. The export does
+// not: an approved piece exports through the kit version its approval
+// pinned (ticket 13), so the artifact that leaves is the one a person
+// signed off on.
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -19,7 +22,7 @@ import { chromium, type Browser } from "playwright";
 import { z } from "zod";
 import { audit } from "./audit";
 import { getDb } from "./db";
-import { currentKit } from "./brand-kit";
+import { currentKit, kitAtVersion, type BrandKit } from "./brand-kit";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
 import { pieceDocSchema, type PieceDoc, type PieceRecord } from "./pieces";
@@ -47,6 +50,17 @@ export function renderSlideHtml(
     renderSlideMarkup(doc, slideIndex, tokens),
     "</body></html>",
   ].join("");
+}
+
+/**
+ * The kit an export must render through: the version approval pinned, or
+ * the current kit for work that was never approved.
+ */
+function exportKit(piece: PieceRecord): BrandKit {
+  if (piece.pinnedKitVersion === null) return currentKit(piece.projectId);
+  return (
+    kitAtVersion(piece.projectId, piece.pinnedKitVersion) ?? currentKit(piece.projectId)
+  );
 }
 
 export function sha256(text: string): string {
@@ -177,7 +191,7 @@ export async function exportPiece(sessionKey: string, input: unknown): Promise<G
   const { piece } = scoped;
 
   const doc = docAtVersion(piece.id, piece.docVersion) ?? piece.doc;
-  const kit = currentKit(piece.projectId);
+  const kit = exportKit(piece);
   const bundleName = `piece-${piece.id}-v${piece.docVersion}`;
   const bundleDir = path.join(exportsRoot(), bundleName);
   fs.mkdirSync(bundleDir, { recursive: true });

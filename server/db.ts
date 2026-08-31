@@ -20,6 +20,10 @@ export function getDb(): Database.Database {
   return db;
 }
 
+// Bumped whenever migrate() changes shape, so checkDb's report means
+// something. 1: the tables through ticket 12. 2: the piece approval columns.
+const SCHEMA_VERSION = "2";
+
 function migrate(d: Database.Database): void {
   d.exec(`
     CREATE TABLE IF NOT EXISTS meta (
@@ -203,9 +207,36 @@ function migrate(d: Database.Database): void {
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
   `);
+  // Columns added to an existing table after that table shipped. CREATE
+  // TABLE IF NOT EXISTS never runs again on a live database, so new columns
+  // need their own idempotent step.
+  addColumn(d, "pieces", "pinned_kit_version", "INTEGER");
+  addColumn(d, "pieces", "brand_outdated", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(d, "pieces", "planned_date", "TEXT");
+
   d.prepare(
-    "INSERT INTO meta (key, value) VALUES ('schema_version', '1') ON CONFLICT(key) DO NOTHING"
-  ).run();
+    `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(SCHEMA_VERSION);
+}
+
+// SQLite cannot bind identifiers, so table, column, and definition are
+// interpolated. Every caller must pass a literal written in this file; the
+// assertion keeps that true if one ever stops being one.
+const SQL_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+function addColumn(
+  d: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  if (!SQL_IDENTIFIER.test(table) || !SQL_IDENTIFIER.test(column)) {
+    throw new Error(`addColumn takes literal identifiers, not ${table}.${column}`);
+  }
+  const columns = d.pragma(`table_info(${table})`) as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+  d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 export function checkDb(): { ok: boolean; detail: string } {

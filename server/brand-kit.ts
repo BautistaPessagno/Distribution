@@ -14,6 +14,7 @@
 import { z } from "zod";
 import { audit } from "./audit";
 import { getDb } from "./db";
+import { flagBrandOutdated } from "./pieces";
 import {
   DEFAULT_BRAND_TOKENS,
   HEX_COLOR_PATTERN,
@@ -187,10 +188,15 @@ export function updateKit(
 
   const summary = parsed.data.summary ?? `Changed ${changed.join(", ")}`;
   const kit = insertKit(projectId, current.version + 1, next, actor, summary);
+  // Backlog and drafting pieces repaint through the new kit. Approved and
+  // planned work does not: approval means the Operator saw the old
+  // rendering, so it is flagged instead (ticket 13).
+  const outdated = flagBrandOutdated(projectId);
   audit(actor, "brand-kit.updated", {
     projectId,
     version: kit.version,
     changed,
+    brandOutdated: outdated,
   });
   return kit;
 }
