@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 Secrets store and audit trail, 05 AI Host OAuth connections.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Registering the stub project mints its token, runs conformance, and shows the result
 - [ ] A failing conformance run leaves the project visibly unhealthy and unusable
