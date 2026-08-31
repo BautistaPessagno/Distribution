@@ -14,6 +14,9 @@ import { getHealth } from "./health";
 import { startJobRunner } from "./jobs";
 import { log, newRequestId } from "./log";
 import { handleMcpRequest } from "./mcp";
+import { projectRouter } from "./project-routes";
+import { isActiveProjectTokenHash } from "./projects";
+import { createStubProjectRouter, stubVerifyAgainstProjects } from "./stub-project";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT ?? 3000);
@@ -76,6 +79,16 @@ async function main(): Promise<void> {
 
   server.use("/api/auth", authRouter());
   server.use("/api/hosts", hostAuthRouter());
+  server.use("/api/projects", projectRouter());
+
+  // Dev stub Connected Project: a conformant project domain served by this
+  // process so registration is testable before any real project exists.
+  if (dev || process.env.ENABLE_STUB_PROJECT === "1") {
+    server.use(
+      "/stub-project",
+      createStubProjectRouter(stubVerifyAgainstProjects(isActiveProjectTokenHash))
+    );
+  }
 
   server.use((req, res) => {
     if (!isPublicPath(req.path) && validateSession(sessionTokenFrom(req)) === null) {

@@ -106,6 +106,20 @@ function migrate(d: Database.Database): void {
       revoked_at TEXT,
       last_used_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      base_url TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'unhealthy'
+        CHECK (status IN ('healthy', 'unhealthy')),
+      token_hash TEXT NOT NULL UNIQUE,
+      token_secret_reference TEXT NOT NULL,
+      token_version INTEGER NOT NULL DEFAULT 1,
+      last_conformance_at TEXT,
+      last_conformance_report TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
     CREATE TABLE IF NOT EXISTS secrets (
       reference TEXT PRIMARY KEY,
       kind TEXT NOT NULL,
