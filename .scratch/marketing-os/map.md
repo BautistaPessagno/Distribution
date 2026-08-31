@@ -34,6 +34,7 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Set the MVP dependency boundary](issues/06-set-mvp-dependency-boundary.md): the core requires the MarketingOS MCP gateway, an AI Host, and project-domain implementations only.
 - [Choose the dashboard's first-use loop](issues/07-choose-dashboard-first-use-loop.md): the home screen is a Today view with due work, upcoming Creative Pieces, an undated backlog, a calendar, visible states, and a clear creation action.
 - [Define the Connected Project MCP contract](issues/08-define-connected-project-mcp-contract.md): one MCP gateway exposes MarketingOS methods and a selected project's versioned, provenance-aware, approval-gated read/write domain while the AI Host supplies all AI compute.
+- [Define the Creative Piece workflow](issues/10-define-creative-piece-workflow.md): a prototype-validated workflow with the backlog-to-measured lifecycle, atomic versioned edit batches, token-driven Brand Kit repaint with pinned approvals, brand errors gating approval, strip-and-save templates, and PNG-bundle export.
 
 ## Not yet specified
 
