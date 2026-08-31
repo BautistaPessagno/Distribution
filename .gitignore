@@ -8,3 +8,5 @@ data/
 .env
 .env.*
 npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
