@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 AI Host OAuth connections.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Each of the six capabilities has a versioned method a host can retrieve by goal
 - [ ] Unknown goals route instead of failing
