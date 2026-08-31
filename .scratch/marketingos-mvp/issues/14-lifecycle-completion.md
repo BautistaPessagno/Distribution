@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 Deterministic renderer and PNG export, 13 Review and approval gate.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Only approved pieces accept a planned date; only planned pieces export
 - [ ] Export refuses while brand-outdated, naming re-approval as the path
