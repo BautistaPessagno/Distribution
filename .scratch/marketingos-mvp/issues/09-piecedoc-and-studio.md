@@ -4,8 +4,12 @@
 
 **Blocked by:** 04 Dashboard shell and design tokens, 07 Session ritual and Project Snapshots.
 
-**Status:** in-progress
+**Status:** done
 
-- [ ] A host creates a piece bound to the current snapshot; the Operator sees it in Studio
-- [ ] Cross-project piece access is refused
-- [ ] All four formats and the captions map round-trip intact
+- [x] A host creates a piece bound to the current snapshot; the Operator sees it in Studio
+- [x] Cross-project piece access is refused
+- [x] All four formats and the captions map round-trip intact
+
+## Comments
+
+- Implemented the PieceDoc schema (zod: 1-20 slides; text/image/shape/logo layers; formats 4:5, 1:1, 9:16, 16:9; per-network captions for instagram/x/linkedin/tiktok), a `pieces` table binding each piece to its creating Project Snapshot, gateway tools `marketingos.create_piece` / `get_piece` / `list_pieces` (cross-project reads refuse with `cross_project_refused`), an Operator `/api/pieces` surface, and the Studio page listing pieces with status tags and a per-piece document detail view. Covered by tests/pieces.test.ts. PR: https://github.com/BautistaPessagno/Distribution/pull/9
