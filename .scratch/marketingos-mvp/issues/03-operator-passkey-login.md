@@ -4,8 +4,12 @@
 
 **Blocked by:** 01 Walking skeleton.
 
-**Status:** in-progress
+**Status:** done
 
-- [ ] First-run creates the sole Operator account with a passkey and shows a recovery code once
-- [ ] Sign-in with the passkey and recovery-code fallback both work
-- [ ] All dashboard routes require an authenticated session
+- [x] First-run creates the sole Operator account with a passkey and shows a recovery code once
+- [x] Sign-in with the passkey and recovery-code fallback both work
+- [x] All dashboard routes require an authenticated session
+
+## Comments
+
+- Implemented WebAuthn passkey registration (first-run, sole Operator) with a one-time recovery code, passkey sign-in plus recovery-code fallback, cookie sessions with sign-out, and an authenticated-session guard on all dashboard routes. PR: https://github.com/BautistaPessagno/Distribution/pull/3
