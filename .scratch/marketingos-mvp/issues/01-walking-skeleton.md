@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** done
+**Status:** ready-for-agent
 
 - [x] `marketingos.onboard` answers a real MCP client over HTTPS with contract version, rules, tool map, and example goals
 - [x] SQLite database replicates continuously; restoring from replica is documented and tested once
