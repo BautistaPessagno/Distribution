@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 Walking skeleton.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] First-run creates the sole Operator account with a passkey and shows a recovery code once
 - [ ] Sign-in with the passkey and recovery-code fallback both work
