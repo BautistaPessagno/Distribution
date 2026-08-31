@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  SaveAsTemplate,
+  TemplateList,
+  type CreativeTemplateRow,
+} from "../creative-templates";
 import { PieceMoves } from "../piece-moves";
 import { EmptyState, Shell } from "../shell";
 import {
@@ -256,56 +261,6 @@ function LifecyclePanel({
   );
 }
 
-// A Creative Template is the layout without the campaign: saving one leaves
-// the piece exactly as it is and writes a stripped copy alongside it.
-function SaveAsTemplate({ piece, onSaved }: { piece: Piece; onSaved: () => void }) {
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  const save = useCallback(async () => {
-    setBusy(true);
-    setProblem(null);
-    setNote(null);
-    try {
-      const res = await fetch(`/api/pieces/${piece.id}/save-as-template`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(name.trim() ? { name: name.trim() } : {}),
-      });
-      const data = (await res.json()) as { note?: string; message?: string; error?: string };
-      if (!res.ok) throw new Error(data.message ?? data.error ?? "The save was refused");
-      setNote(data.note ?? null);
-      setName("");
-      onSaved();
-    } catch (err) {
-      setProblem(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [name, onSaved, piece.id]);
-
-  return (
-    <div style={{ marginTop: "var(--space-1)" }}>
-      <label>
-        <span className="tag">template name</span>{" "}
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={`${piece.title} layout`}
-          aria-label={`Template name for ${piece.title}`}
-        />
-      </label>{" "}
-      <button className="action-quiet" disabled={busy} onClick={() => void save()}>
-        Save layout as a Creative Template
-      </button>
-      {note && <p className="body-text">{note}</p>}
-      {problem && <p className="error-text">{problem}</p>}
-    </div>
-  );
-}
-
 function FindingList({ findings, tag }: { findings: CheckFinding[]; tag: string }) {
   return (
     <ul>
@@ -355,51 +310,6 @@ function ChecksPanel({ checks }: { checks: CheckReports | null }) {
   );
 }
 
-interface CreativeTemplateRow {
-  id: number;
-  name: string;
-  projectName: string;
-  doc: PieceDoc;
-  fromPieceId: number | null;
-  createdAt: string;
-}
-
-function TemplateList({ templates }: { templates: CreativeTemplateRow[] | null }) {
-  if (templates === null) return null;
-  return (
-    <>
-      <hr className="hairline" />
-      <h2 className="headline" style={{ fontSize: "1.1rem" }}>
-        Creative Templates
-      </h2>
-      <p className="body-text">
-        Layout and Brand Kit token references, without the campaign that produced them.
-        A host starts a new backlog piece from one with{" "}
-        <span className="mono">marketingos.instantiate_template</span>.
-      </p>
-      {templates.length === 0 ? (
-        <p className="body-text">No templates saved yet.</p>
-      ) : (
-        <ul className="connection-list">
-          {templates.map((t) => (
-            <li key={t.id} className="connection-row">
-              <div>
-                <strong>{t.name}</strong> <span className="tag">{t.doc.format}</span>{" "}
-                <span className="tag">{t.projectName}</span>
-                <div className="body-text">
-                  {t.doc.slides.length} slide{t.doc.slides.length === 1 ? "" : "s"}
-                  {t.fromPieceId !== null ? ` · from piece #${t.fromPieceId}` : ""} ·{" "}
-                  {new Date(t.createdAt).toLocaleString()}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
-  );
-}
-
 export default function StudioPage() {
   const [pieces, setPieces] = useState<Piece[] | null>(null);
   const [templates, setTemplates] = useState<CreativeTemplateRow[] | null>(null);
@@ -412,7 +322,7 @@ export default function StudioPage() {
     try {
       const [piecesRes, templatesRes] = await Promise.all([
         fetch("/api/pieces"),
-        fetch("/api/pieces/templates"),
+        fetch("/api/templates"),
       ]);
       if (!piecesRes.ok) throw new Error((await piecesRes.json()).error);
       if (!templatesRes.ok) throw new Error((await templatesRes.json()).error);

@@ -238,6 +238,35 @@ function pieceSummary(piece: PieceRecord): Record<string, unknown> {
   };
 }
 
+/**
+ * Write a new Creative Piece and the version-1 row of its history, in one
+ * transaction. Every piece starts this way — drafted by a host, or started
+ * from a Creative Template — so the binding to a Project Snapshot and the
+ * append-only history both begin in exactly one place.
+ */
+export function insertPiece(
+  projectId: number,
+  title: string,
+  snapshotId: string,
+  doc: PieceDoc,
+  actor: string,
+  summary: string
+): PieceRecord {
+  const db = getDb();
+  const info = db.transaction(() => {
+    const inserted = db
+      .prepare("INSERT INTO pieces (project_id, title, snapshot, doc) VALUES (?, ?, ?, ?)")
+      .run(projectId, title, snapshotId, JSON.stringify(doc));
+    db.prepare(
+      "INSERT INTO piece_versions (piece_id, version, actor, summary, doc) VALUES (?, 1, ?, ?, ?)"
+    ).run(Number(inserted.lastInsertRowid), actor, summary, JSON.stringify(doc));
+    return inserted;
+  })();
+  const piece = getPieceById(Number(info.lastInsertRowid));
+  if (!piece) throw new Error("piece insert did not persist");
+  return piece;
+}
+
 export function createPiece(sessionKey: string, input: unknown): GatewayResult {
   const pinned = pinnedSession(sessionKey);
   if (!pinned) return noProjectSelected();
@@ -257,20 +286,7 @@ export function createPiece(sessionKey: string, input: unknown): GatewayResult {
   }
 
   const { title, doc } = parsed.data;
-  const db = getDb();
-  const info = db.transaction(() => {
-    const inserted = db
-      .prepare(
-        "INSERT INTO pieces (project_id, title, snapshot, doc) VALUES (?, ?, ?, ?)"
-      )
-      .run(pinned.projectId, title, pinned.snapshotId, JSON.stringify(doc));
-    db.prepare(
-      "INSERT INTO piece_versions (piece_id, version, actor, summary, doc) VALUES (?, 1, 'ai-host', 'Created', ?)"
-    ).run(Number(inserted.lastInsertRowid), JSON.stringify(doc));
-    return inserted;
-  })();
-  const piece = getPieceById(Number(info.lastInsertRowid));
-  if (!piece) throw new Error("piece insert did not persist");
+  const piece = insertPiece(pinned.projectId, title, pinned.snapshotId, doc, "ai-host", "Created");
 
   registerInFlight(sessionKey, `piece #${piece.id} "${piece.title}"`);
   audit("ai-host", "pieces.created", {

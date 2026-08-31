@@ -25,6 +25,7 @@ import {
 import { scopedPiece } from "./piece-edits";
 import {
   CAPTION_NETWORKS,
+  insertPiece,
   pieceDocSchema,
   type PieceDoc,
   type PieceRecord,
@@ -63,17 +64,24 @@ function rowToTemplate(row: TemplateRow): CreativeTemplate {
  * The strip. Everything a campaign wrote goes; everything that makes the
  * piece look the way it looks stays.
  *
- * Emptied: text layer copy (which is where claims and [NEED: ...] tokens
- * live) and all four captions. Kept: the format, the slides, the layer
- * order and types, every frame, and every `brand.*` / `font.*` token
- * reference. Planning data is not stripped so much as never copied — a
- * template holds a document, not a piece.
+ * Emptied: every field a campaign writes prose into — text layer copy
+ * (where the claims and any [NEED: ...] tokens live), image alt text, and
+ * all four captions. Kept: the format, the slides, the layer order and
+ * types, every frame, and every `brand.*` / `font.*` token reference.
+ * Planning data is not stripped so much as never copied — a template holds
+ * a document, not a piece.
+ *
+ * An image layer keeps its `ref`, so the template still renders as the
+ * composition it was. That reference is a placeholder, not a promise: the
+ * asset lineage that would let a template carry or re-resolve its images
+ * properly arrives with the image-handoff ticket.
  */
 export function stripToTemplate(doc: PieceDoc): PieceDoc {
   const copy = JSON.parse(JSON.stringify(doc)) as PieceDoc;
   for (const slide of copy.slides) {
     for (const layer of slide.layers) {
       if (layer.type === "text") layer.text = "";
+      if (layer.type === "image") delete layer.alt;
     }
   }
   for (const network of CAPTION_NETWORKS) copy.captions[network] = "";
@@ -105,7 +113,7 @@ function errResult(error: string, message: string, next: string): GatewayResult 
   return { ok: false, response: { error, message, next } };
 }
 
-function templateSummary(template: CreativeTemplate): Record<string, unknown> {
+export function templateSummary(template: CreativeTemplate): Record<string, unknown> {
   return {
     id: template.id,
     name: template.name,
@@ -143,13 +151,13 @@ export function saveAsTemplate(
   const scoped = scopedPiece(sessionKey, parsed.data.id);
   if ("error" in scoped) return scoped.error;
 
-  const result = saveAsTemplateFor(scoped.piece, parsed.data.name, actor);
+  const result = saveAsTemplateRecord(scoped.piece, parsed.data.name, actor);
   if (!result.ok) return result;
   return { ok: true, response: { context: sessionContext(sessionKey), ...result.response } };
 }
 
 /** The save itself, for the Operator surface, which has no gateway session. */
-export function saveAsTemplateFor(
+export function saveAsTemplateRecord(
   piece: PieceRecord,
   requestedName: string | undefined,
   actor: string
@@ -238,27 +246,19 @@ export function instantiateTemplate(
   // Parsing on the way out as well as in: a template that predates a schema
   // change should fail loudly here, not produce a malformed piece.
   const doc = pieceDocSchema.parse(template.doc);
-  const db = getDb();
-  const info = db.transaction(() => {
-    const inserted = db
-      .prepare("INSERT INTO pieces (project_id, title, snapshot, doc) VALUES (?, ?, ?, ?)")
-      .run(pinned.projectId, parsed.data.title, pinned.snapshotId, JSON.stringify(doc));
-    db.prepare(
-      "INSERT INTO piece_versions (piece_id, version, actor, summary, doc) VALUES (?, 1, ?, ?, ?)"
-    ).run(
-      Number(inserted.lastInsertRowid),
-      actor,
-      `Created from Creative Template "${template.name}"`,
-      JSON.stringify(doc)
-    );
-    return inserted;
-  })();
+  const piece = insertPiece(
+    pinned.projectId,
+    parsed.data.title,
+    pinned.snapshotId,
+    doc,
+    actor,
+    `Created from Creative Template "${template.name}"`
+  );
 
-  const pieceId = Number(info.lastInsertRowid);
-  registerInFlight(sessionKey, `piece #${pieceId} "${parsed.data.title}"`);
+  registerInFlight(sessionKey, `piece #${piece.id} "${piece.title}"`);
   audit(actor, "templates.instantiated", {
     templateId: template.id,
-    pieceId,
+    pieceId: piece.id,
     projectId: pinned.projectId,
     snapshot: pinned.snapshotId,
   });
@@ -268,16 +268,16 @@ export function instantiateTemplate(
     response: {
       context: sessionContext(sessionKey),
       piece: {
-        id: pieceId,
-        title: parsed.data.title,
-        status: "backlog",
+        id: piece.id,
+        title: piece.title,
+        status: piece.status,
         format: doc.format,
         slides: doc.slides.length,
-        snapshot: pinned.snapshotId,
-        docVersion: 1,
+        snapshot: piece.snapshot,
+        docVersion: piece.docVersion,
         doc,
       },
-      note: `Started "${parsed.data.title}" from Creative Template "${template.name}". The layout is in place; the copy and captions are yours to write.`,
+      note: `Started "${piece.title}" from Creative Template "${template.name}". The layout is in place; the copy and captions are yours to write.`,
     },
   };
 }

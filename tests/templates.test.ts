@@ -29,6 +29,7 @@ import {
   submitForReview,
 } from "../server/piece-lifecycle";
 import { pieceRouter } from "../server/piece-routes";
+import { templateRouter } from "../server/template-routes";
 import { createPiece, getPieceById, type PieceDoc, type PieceRecord } from "../server/pieces";
 import {
   createProjectDomainRouter,
@@ -66,6 +67,7 @@ const app = express();
 app.use("/keepanalog", router);
 app.use("/vinylos", router);
 app.use("/api/pieces", pieceRouter());
+app.use("/api/templates", templateRouter());
 const server = app.listen(0);
 const port = (server.address() as AddressInfo).port;
 
@@ -168,16 +170,23 @@ test.after(() => {
 // ---------------------------------------------------------------------------
 // Criterion 1: the strip
 
-test("the strip empties every text layer and every caption, and nothing else", () => {
+test("the strip empties every field a campaign writes prose into", () => {
   const original = campaignDoc();
   const stripped = stripToTemplate(original);
 
-  // Every piece of campaign copy is gone, including the [NEED] claim token.
+  // Every piece of campaign copy is gone, including the [NEED] claim token
+  // and the alt text, which is prose a campaign writes like any other.
   const text = JSON.stringify(stripped);
   assert.ok(!text.includes("Five reasons paper wins"));
   assert.ok(!text.includes("[NEED"));
   assert.ok(!text.includes("Back in stock"));
+  assert.ok(!text.includes("A stack of notebooks"));
   assert.deepEqual(Object.values(stripped.captions), ["", "", "", ""]);
+  const image = stripped.slides[1].layers[0];
+  assert.equal(image.type === "image" && image.alt, undefined);
+  // The image still points at something, so the template renders as the
+  // composition it was.
+  assert.equal(image.type === "image" && image.ref, "asset://hero");
 
   // The layout is untouched: same format, same slides, same layer order and
   // types, same frames, same token references.
@@ -221,6 +230,7 @@ test("a saved template carries no campaign text, claims, captions, or dates", ()
     "Five reasons paper wins",
     "[NEED",
     "Our best seller",
+    "A stack of notebooks",
     "2026-09-05",
     "412 saves",
   ]) {
@@ -375,7 +385,7 @@ test("the Operator saves a layout as a template and reads the list over HTTP", a
   const savedBody = (await saved.json()) as { note: string; template: { id: number } };
   assert.match(savedBody.note, /campaign text, claims, captions, and planning data stripped/);
 
-  const listed = await fetch(`http://127.0.0.1:${port}/api/pieces/templates`, {
+  const listed = await fetch(`http://127.0.0.1:${port}/api/templates`, {
     headers: { cookie },
   });
   assert.equal(listed.status, 200);
@@ -395,10 +405,11 @@ test("the Operator saves a layout as a template and reads the list over HTTP", a
     ).status,
     404
   );
-  assert.equal(
-    (await fetch(`http://127.0.0.1:${port}/api/pieces/templates`)).status,
-    401
-  );
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/templates`)).status, 401);
+
+  // The list is a summary: a template's document is not sprayed at the
+  // dashboard, which only needs to say what shape it is.
+  assert.ok(!("doc" in (row as object)));
 });
 
 test("an approved piece can be templated without disturbing its approval", () => {
