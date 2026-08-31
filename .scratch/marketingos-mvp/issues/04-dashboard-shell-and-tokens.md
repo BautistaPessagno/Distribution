@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 Operator passkey login.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Design tokens exist as one source of truth; no component carries ad-hoc colors
 - [ ] Every destination has a composed empty state saying how it gets populated
