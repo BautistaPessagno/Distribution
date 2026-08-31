@@ -69,6 +69,8 @@ interface Piece {
   plannedDate: string | null;
   createdAt: string;
   kit: BrandKit;
+  /** The Operator moves this piece can take right now, decided server-side. */
+  operatorMoves: string[];
 }
 
 interface PieceVersion {
@@ -196,8 +198,16 @@ function BrandKitPanel({
   );
 }
 
+const MOVE_LABELS: Record<string, string> = {
+  approve: "Approve",
+  "request-changes": "Request changes",
+  reapprove: "Re-approve against the current kit",
+  reopen: "Reopen to drafting",
+};
+
 // The Operator's half of the lifecycle. The AI Host drafts, submits, and
-// can reopen; approving is a person's act, so it lives only here.
+// can reopen; approving is a person's act, so it lives only here. Which
+// moves apply is decided server-side and arrives on the piece.
 function LifecyclePanel({
   piece,
   checks,
@@ -264,32 +274,18 @@ function LifecyclePanel({
         </ul>
       )}
       <div>
-        {piece.status === "review" && (
-          <>
-            <button className="action-quiet" disabled={busy} onClick={() => void move("approve")}>
-              Approve
-            </button>{" "}
-            <button
-              className="action-quiet"
-              disabled={busy}
-              onClick={() => void move("request-changes")}
-            >
-              Request changes
-            </button>{" "}
-          </>
-        )}
-        {piece.brandOutdated && (
-          <>
-            <button className="action-quiet" disabled={busy} onClick={() => void move("reapprove")}>
-              Re-approve against the current kit
-            </button>{" "}
-          </>
-        )}
-        {["review", "approved", "planned"].includes(piece.status) && (
-          <button className="action-quiet" disabled={busy} onClick={() => void move("reopen")}>
-            Reopen to drafting
+        {piece.operatorMoves.map((action) => (
+          <button
+            key={action}
+            className="action-quiet"
+            disabled={busy}
+            onClick={() => void move(action)}
+            style={{ marginRight: "var(--space-1)" }}
+          >
+            {MOVE_LABELS[action] ?? action}
           </button>
-        )}
+        ))}
+        {piece.operatorMoves.length === 0 && <p>No Operator move applies while {piece.status}.</p>}
       </div>
       {note && <p>{note}</p>}
       {problem && <p className="error-text">{problem}</p>}

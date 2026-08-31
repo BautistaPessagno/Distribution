@@ -7,11 +7,13 @@ import { listVersionsForPiece } from "./piece-edits";
 import {
   approvalBlockers,
   approvePiece,
+  availableOperatorMoves,
   reapprovePiece,
   reopenPiece,
   requestPieceChanges,
+  type OperatorMove,
 } from "./piece-lifecycle";
-import { getPieceById, listAllPieces } from "./pieces";
+import { getPieceById, listAllPieces, type PieceRecord } from "./pieces";
 import { listProjects } from "./projects";
 
 // Operator surface for Creative Pieces: Studio lists every piece across
@@ -63,6 +65,7 @@ export function pieceRouter(): Router {
           ...piece,
           projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
           kit,
+          operatorMoves: availableOperatorMoves(piece),
         };
       }),
     });
@@ -92,28 +95,29 @@ export function pieceRouter(): Router {
   // Approval is the Operator's act: it means a person saw this exact
   // document rendered through this Brand Kit. The AI Host can draft, submit,
   // and reopen; it can never approve.
-  const OPERATOR_MOVES = {
-    approve: approvePiece,
-    reapprove: reapprovePiece,
-    reopen: reopenPiece,
-  } as const;
+  // Studio renders its buttons from availableOperatorMoves, so the lifecycle
+  // rules live in one place instead of being re-derived client-side.
+  const MOVE_HANDLERS: Record<
+    OperatorMove,
+    (piece: PieceRecord, req: Request) => ReturnType<typeof approvePiece>
+  > = {
+    approve: (piece) => approvePiece(piece, "operator"),
+    "request-changes": (piece, req) => {
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      return requestPieceChanges(piece, "operator", reason || undefined);
+    },
+    reapprove: (piece) => reapprovePiece(piece, "operator"),
+    reopen: (piece) => reopenPiece(piece, "operator"),
+  };
 
-  for (const [path, move] of Object.entries(OPERATOR_MOVES)) {
+  for (const [path, move] of Object.entries(MOVE_HANDLERS)) {
     router.post(`/:id/${path}`, (req, res) => {
       const piece = pieceOr404(req, res);
       if (!piece) return;
-      const result = move(piece, "operator");
+      const result = move(piece, req);
       res.status(result.ok ? 200 : 409).json(result.response);
     });
   }
-
-  router.post("/:id/request-changes", (req, res) => {
-    const piece = pieceOr404(req, res);
-    if (!piece) return;
-    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : undefined;
-    const result = requestPieceChanges(piece, "operator", reason || undefined);
-    res.status(result.ok ? 200 : 409).json(result.response);
-  });
 
   router.get("/:id", (req, res) => {
     const piece = pieceOr404(req, res);
@@ -123,6 +127,7 @@ export function pieceRouter(): Router {
       piece: {
         ...piece,
         projectName: names.get(piece.projectId) ?? `project #${piece.projectId}`,
+        operatorMoves: availableOperatorMoves(piece),
       },
       kit: currentKit(piece.projectId),
     });

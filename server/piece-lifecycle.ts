@@ -12,9 +12,11 @@
 //     an unsupported-claim [NEED: ...] token, naming every blocker;
 //   - never refuses for a check_quality finding, which only advises;
 //   - pins the kit version the piece was approved against.
-// A later kit change flags approved and planned work brand-outdated rather
-// than silently repainting it, and re-approval re-pins the kit without
-// disturbing status or planned date.
+// A later kit change flags approved and planned work brand-outdated. The
+// preview still repaints — that is how the Operator sees what changed — but
+// the export renders through the pinned kit, so the artifact that leaves is
+// the one that was approved. Re-approval re-pins without disturbing status
+// or planned date.
 
 import { z } from "zod";
 import { audit } from "./audit";
@@ -24,8 +26,6 @@ import { getDb } from "./db";
 import { sessionContext, type GatewayResult } from "./gateway";
 import { scopedPiece } from "./piece-edits";
 import { getPieceById, type PieceDoc, type PieceRecord, type PieceStatus } from "./pieces";
-
-export { PINNED_STATUSES, flagBrandOutdated } from "./pieces";
 
 /** A piece can be reopened to drafting from any of these. */
 export const REOPENABLE_STATUSES: readonly PieceStatus[] = ["review", "approved", "planned"];
@@ -71,28 +71,31 @@ function wrongStatus(piece: PieceRecord, action: string, expected: string): Gate
   );
 }
 
-function setStatus(
+/**
+ * What a move does to the approval state that rides alongside the status.
+ * Only three of these ever occur, and naming them is what keeps the writes
+ * honest: nothing else in the row is touched.
+ */
+type ApprovalWrite =
+  /** Move the status; leave pin, flag, and planned date exactly as they are. */
+  | { kind: "keep" }
+  /** Approval or re-approval: pin this kit version and clear the flag. */
+  | { kind: "pin"; kitVersion: number }
+  /** Reopen: the approval and the plan it carried are gone. */
+  | { kind: "clear" };
+
+function writeStatus(
   piece: PieceRecord,
   status: PieceStatus,
-  extra: Partial<{
-    pinnedKitVersion: number | null;
-    brandOutdated: boolean;
-    plannedDate: string | null;
-  }> = {}
+  write: ApprovalWrite
 ): PieceRecord {
   const assignments = ["status = ?", "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"];
   const values: (string | number | null)[] = [status];
-  if ("pinnedKitVersion" in extra) {
-    assignments.push("pinned_kit_version = ?");
-    values.push(extra.pinnedKitVersion ?? null);
-  }
-  if ("brandOutdated" in extra) {
-    assignments.push("brand_outdated = ?");
-    values.push(extra.brandOutdated ? 1 : 0);
-  }
-  if ("plannedDate" in extra) {
-    assignments.push("planned_date = ?");
-    values.push(extra.plannedDate ?? null);
+  if (write.kind === "pin") {
+    assignments.push("pinned_kit_version = ?", "brand_outdated = 0");
+    values.push(write.kitVersion);
+  } else if (write.kind === "clear") {
+    assignments.push("pinned_kit_version = NULL", "brand_outdated = 0", "planned_date = NULL");
   }
   getDb()
     .prepare(`UPDATE pieces SET ${assignments.join(", ")} WHERE id = ?`)
@@ -107,6 +110,11 @@ export interface ApprovalBlockers {
   needTokens: NeedToken[];
 }
 
+/** True when anything at all stands between this piece and approval. */
+export function isBlocked(blockers: ApprovalBlockers): boolean {
+  return blockers.brandErrors.length > 0 || blockers.needTokens.length > 0;
+}
+
 /** Everything that stands between a piece and approval, right now. */
 export function approvalBlockers(piece: PieceRecord): ApprovalBlockers {
   const kit = currentKit(piece.projectId);
@@ -116,19 +124,30 @@ export function approvalBlockers(piece: PieceRecord): ApprovalBlockers {
   };
 }
 
-function blockedResult(piece: PieceRecord, blockers: ApprovalBlockers, verb: string): GatewayResult {
+function blockedResult(
+  piece: PieceRecord,
+  blockers: ApprovalBlockers,
+  verb: "Approval" | "Re-approval"
+): GatewayResult {
   const reasons = [
     ...blockers.brandErrors.map((f) => f.message),
     ...blockers.needTokens.map(
       (n) => `${n.where} still carries the unsupported-claim token ${n.token}.`
     ),
   ];
+  // Reopening a piece clears its planned date, which is exactly what
+  // re-approval exists to preserve — so only the first-approval path is
+  // told to reopen.
+  const next =
+    verb === "Approval"
+      ? "Reopen the piece to drafting, fix every blocker, and submit for review again. Quality findings are advisory and never block."
+      : "Fix the Brand Kit or reopen the piece to drafting to edit it — reopening clears the planned date. Quality findings are advisory and never block.";
   return {
     ok: false,
     response: {
       error: "approval_blocked",
       message: `${verb} refused for "${piece.title}": ${reasons.length} blocker(s). ${reasons.join(" ")}`,
-      next: "Reopen the piece to drafting, fix every blocker, and submit for review again. Quality findings are advisory and never block.",
+      next,
       blockers: {
         brandErrors: blockers.brandErrors,
         needTokens: blockers.needTokens,
@@ -137,28 +156,27 @@ function blockedResult(piece: PieceRecord, blockers: ApprovalBlockers, verb: str
   };
 }
 
-function lifecycleResponse(
-  sessionKey: string | null,
-  piece: PieceRecord,
-  note: string
-): GatewayResult {
-  const quality = qualityReport(piece.doc, piece.docVersion);
+/** The lifecycle state of a piece, as every response reports it. */
+function lifecycleSummary(piece: PieceRecord): Record<string, unknown> {
+  return {
+    id: piece.id,
+    title: piece.title,
+    status: piece.status,
+    docVersion: piece.docVersion,
+    pinnedKitVersion: piece.pinnedKitVersion,
+    brandOutdated: piece.brandOutdated,
+    plannedDate: piece.plannedDate,
+  };
+}
+
+function lifecycleResponse(piece: PieceRecord, note: string): GatewayResult {
   return {
     ok: true,
     response: {
-      ...(sessionKey === null ? {} : { context: sessionContext(sessionKey) }),
-      piece: {
-        id: piece.id,
-        title: piece.title,
-        status: piece.status,
-        docVersion: piece.docVersion,
-        pinnedKitVersion: piece.pinnedKitVersion,
-        brandOutdated: piece.brandOutdated,
-        plannedDate: piece.plannedDate,
-      },
+      piece: lifecycleSummary(piece),
       note,
       // Reported, never enforced: heuristics advise.
-      qualityFindings: quality.findings,
+      qualityFindings: qualityReport(piece.doc, piece.docVersion).findings,
     },
   };
 }
@@ -168,17 +186,16 @@ function lifecycleResponse(
 
 export function startDraftingPiece(piece: PieceRecord, actor: string): GatewayResult {
   if (piece.status !== "backlog") return wrongStatus(piece, "Start drafting", "backlog");
-  const updated = setStatus(piece, "drafting");
+  const updated = writeStatus(piece, "drafting", { kind: "keep" });
   audit(actor, "pieces.drafting", { pieceId: piece.id, from: "backlog" });
-  return lifecycleResponse(null, updated, `"${piece.title}" moved backlog → drafting.`);
+  return lifecycleResponse(updated, `"${piece.title}" moved backlog → drafting.`);
 }
 
 export function submitPieceForReview(piece: PieceRecord, actor: string): GatewayResult {
   if (piece.status !== "drafting") return wrongStatus(piece, "Submitting for review", "drafting");
-  const updated = setStatus(piece, "review");
+  const updated = writeStatus(piece, "review", { kind: "keep" });
   audit(actor, "pieces.submitted", { pieceId: piece.id, docVersion: piece.docVersion });
   return lifecycleResponse(
-    null,
     updated,
     `"${piece.title}" moved drafting → review at version ${piece.docVersion}.`
   );
@@ -190,10 +207,9 @@ export function requestPieceChanges(
   reason?: string
 ): GatewayResult {
   if (piece.status !== "review") return wrongStatus(piece, "Requesting changes", "review");
-  const updated = setStatus(piece, "drafting");
+  const updated = writeStatus(piece, "drafting", { kind: "keep" });
   audit(actor, "pieces.changes_requested", { pieceId: piece.id, reason: reason ?? null });
   return lifecycleResponse(
-    null,
     updated,
     `Changes requested; "${piece.title}" moved review → drafting.${reason ? ` ${reason}` : ""}`
   );
@@ -203,7 +219,7 @@ export function approvePiece(piece: PieceRecord, actor: string): GatewayResult {
   if (piece.status !== "review") return wrongStatus(piece, "Approval", "review");
 
   const blockers = approvalBlockers(piece);
-  if (blockers.brandErrors.length > 0 || blockers.needTokens.length > 0) {
+  if (isBlocked(blockers)) {
     audit(actor, "pieces.approval_blocked", {
       pieceId: piece.id,
       brandErrors: blockers.brandErrors.length,
@@ -213,17 +229,13 @@ export function approvePiece(piece: PieceRecord, actor: string): GatewayResult {
   }
 
   const kit = currentKit(piece.projectId);
-  const updated = setStatus(piece, "approved", {
-    pinnedKitVersion: kit.version,
-    brandOutdated: false,
-  });
+  const updated = writeStatus(piece, "approved", { kind: "pin", kitVersion: kit.version });
   audit(actor, "pieces.approved", {
     pieceId: piece.id,
     docVersion: piece.docVersion,
     kitVersion: kit.version,
   });
   return lifecycleResponse(
-    null,
     updated,
     `"${piece.title}" approved at version ${piece.docVersion}, rendering pinned to Brand Kit v${kit.version}.`
   );
@@ -239,7 +251,7 @@ export function reapprovePiece(piece: PieceRecord, actor: string): GatewayResult
   }
 
   const blockers = approvalBlockers(piece);
-  if (blockers.brandErrors.length > 0 || blockers.needTokens.length > 0) {
+  if (isBlocked(blockers)) {
     audit(actor, "pieces.reapproval_blocked", {
       pieceId: piece.id,
       brandErrors: blockers.brandErrors.length,
@@ -251,17 +263,13 @@ export function reapprovePiece(piece: PieceRecord, actor: string): GatewayResult
   const kit = currentKit(piece.projectId);
   // Status and planned date are deliberately untouched: re-approval is about
   // the rendering the Operator saw, not about where the piece is.
-  const updated = setStatus(piece, piece.status, {
-    pinnedKitVersion: kit.version,
-    brandOutdated: false,
-  });
+  const updated = writeStatus(piece, piece.status, { kind: "pin", kitVersion: kit.version });
   audit(actor, "pieces.reapproved", {
     pieceId: piece.id,
     kitVersion: kit.version,
     status: piece.status,
   });
   return lifecycleResponse(
-    null,
     updated,
     `"${piece.title}" re-approved; rendering re-pinned to Brand Kit v${kit.version}. Its status (${piece.status}) and planned date are unchanged.`
   );
@@ -272,17 +280,30 @@ export function reopenPiece(piece: PieceRecord, actor: string): GatewayResult {
     return wrongStatus(piece, "Reopening", REOPENABLE_STATUSES.join(", "));
   }
   const from = piece.status;
-  const updated = setStatus(piece, "drafting", {
-    pinnedKitVersion: null,
-    brandOutdated: false,
-    plannedDate: null,
-  });
+  const updated = writeStatus(piece, "drafting", { kind: "clear" });
   audit(actor, "pieces.reopened", { pieceId: piece.id, from });
   return lifecycleResponse(
-    null,
     updated,
     `"${piece.title}" reopened ${from} → drafting. Approval and planned date were cleared; it must pass review again.`
   );
+}
+
+/** The Operator moves this piece can take right now, in the order Studio shows them. */
+export const OPERATOR_MOVES = ["approve", "request-changes", "reapprove", "reopen"] as const;
+export type OperatorMove = (typeof OPERATOR_MOVES)[number];
+
+export function availableOperatorMoves(piece: PieceRecord): OperatorMove[] {
+  return OPERATOR_MOVES.filter((move) => {
+    switch (move) {
+      case "approve":
+      case "request-changes":
+        return piece.status === "review";
+      case "reapprove":
+        return piece.brandOutdated;
+      case "reopen":
+        return REOPENABLE_STATUSES.includes(piece.status);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -355,16 +376,9 @@ export function approvalStatus(sessionKey: string, input: unknown): GatewayResul
     ok: true,
     response: {
       context: sessionContext(sessionKey),
-      piece: {
-        id: piece.id,
-        title: piece.title,
-        status: piece.status,
-        docVersion: piece.docVersion,
-        pinnedKitVersion: piece.pinnedKitVersion,
-        brandOutdated: piece.brandOutdated,
-      },
+      piece: lifecycleSummary(piece),
       approval: {
-        blocked: blockers.brandErrors.length > 0 || blockers.needTokens.length > 0,
+        blocked: isBlocked(blockers),
         brandErrors: blockers.brandErrors,
         needTokens: blockers.needTokens,
         qualityFindings: quality.findings,

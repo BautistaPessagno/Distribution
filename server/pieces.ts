@@ -103,7 +103,10 @@ export interface PieceRecord {
   docVersion: number;
   /** The Brand Kit version approval pinned the rendering to, or null. */
   pinnedKitVersion: number | null;
-  /** Set when the kit moved on after approval; blocks export until re-approval. */
+  /**
+   * Set when the kit moved on after approval. The export still renders
+   * through the pinned kit; ticket 14 makes the flag block export outright.
+   */
   brandOutdated: boolean;
   /** A plan, never a publishing queue. Cleared by reopen. */
   plannedDate: string | null;

@@ -21,13 +21,14 @@ process.env.SECRETS_MASTER_KEY = randomBytes(32).toString("base64");
 
 import express from "express";
 import { createSession, hashRecoveryCode, SESSION_COOKIE } from "../server/auth";
-import { currentKit, updateKit } from "../server/brand-kit";
+import { currentKit, kitAtVersion, updateKit } from "../server/brand-kit";
 import { getDb } from "../server/db";
 import { selectProject } from "../server/gateway";
 import { applyEditBatch } from "../server/piece-edits";
 import {
   approvalStatus,
   approvePiece,
+  availableOperatorMoves,
   needTokens,
   reapprovePiece,
   reopen,
@@ -46,7 +47,7 @@ import {
   type ResourceEnvelope,
 } from "../server/project-domain-sdk";
 import { isActiveProjectTokenHash, registerProject } from "../server/projects";
-import { renderPreview } from "../server/renderer";
+import { renderPreview, renderSlideHtml } from "../server/renderer";
 import { stubVerifyAgainstProjects } from "../server/stub-project";
 import { DEFAULT_BRAND_TOKENS } from "../render/piece-slide";
 
@@ -395,8 +396,8 @@ test("contract replay, walkthrough 3: brand errors gate approval, quality findin
   });
   assert.equal(added.ok, true);
 
-  // "Run checks: 1 brand error + crowded-slide finding"
-  assert.equal(submitForReview(SESSION, { id: piece.id }).ok, true);
+  // "Run checks: 1 brand error + crowded-slide finding" — the prototype's
+  // RUN_CHECKS, read here through approval_status, while still drafting.
   const status = approvalStatus(SESSION, { id: piece.id });
   const approval = status.response.approval as {
     brandErrors: { code: string }[];
@@ -404,6 +405,9 @@ test("contract replay, walkthrough 3: brand errors gate approval, quality findin
   };
   assert.deepEqual(approval.brandErrors.map((f) => f.code), ["off_kit_color"]);
   assert.ok(approval.qualityFindings.some((f) => f.code === "crowded_slide"));
+
+  // "Submit for review"
+  assert.equal(submitForReview(SESSION, { id: piece.id }).ok, true);
 
   // "Try to approve → blocked by brand error"
   const blocked = approvePiece(reload(piece.id), "operator");
@@ -473,6 +477,46 @@ test("contract replay, walkthrough 4: a kit change after approval flags, and re-
   // Status and planned date are untouched by re-approval.
   assert.equal(current.status, "planned");
   assert.equal(current.plannedDate, "2026-09-05");
+
+  // The walkthrough's remaining two steps are "Try to export → blocked while
+  // brand-outdated" and "Export → succeeds". Refusing an export while
+  // brand-outdated is ticket 14's criterion, so it is not asserted here.
+  // What ticket 13 owes is that the pin means something, which the export
+  // test below checks directly.
+
+  updateKit(
+    projectId,
+    { tokens: { "brand.accent": DEFAULT_BRAND_TOKENS["brand.accent"] } },
+    "operator"
+  );
+});
+
+test("an approved piece exports through the kit its approval pinned, not the current one", () => {
+  const piece = toReview("pinned export");
+  assert.equal(approvePiece(piece, "operator").ok, true);
+  const pinned = reload(piece.id).pinnedKitVersion;
+  assert.ok(pinned !== null);
+
+  const approvedHtml = (renderPreview(SESSION, { id: piece.id }).response.preview as {
+    slides: string[];
+  }).slides[0];
+
+  updateKit(projectId, { tokens: { "brand.accent": "#8a4fff" } }, "operator");
+
+  // The preview repaints, which is how the Operator sees what changed...
+  const repainted = (renderPreview(SESSION, { id: piece.id }).response.preview as {
+    slides: string[];
+  }).slides[0];
+  assert.notEqual(repainted, approvedHtml);
+  assert.equal(reload(piece.id).brandOutdated, true);
+
+  // ...but the export renders through the pinned kit, so the artifact that
+  // leaves is the one the Operator signed off on.
+  const doc = reload(piece.id).doc;
+  const pinnedKit = kitAtVersion(projectId, pinned);
+  assert.ok(pinnedKit);
+  assert.equal(renderSlideHtml(doc, 0, pinnedKit.tokens), approvedHtml);
+  assert.notEqual(pinnedKit.tokens["brand.accent"], currentKit(projectId).tokens["brand.accent"]);
 
   updateKit(
     projectId,
@@ -555,4 +599,37 @@ test("Studio reads the approval blockers alongside both check reports", async ()
   assert.deepEqual(body.approval.brandErrors, body.brand.errors);
   assert.deepEqual(body.approval.needTokens.map((n) => n.token), ["[NEED: source]"]);
   assert.equal(body.quality.advisory, true);
+});
+
+test("Studio is told which Operator moves apply, and the list follows the status", async () => {
+  const piece = makePiece("available moves");
+  const res = await fetch(`http://127.0.0.1:${port}/api/pieces`, { headers: { cookie } });
+  const body = (await res.json()) as {
+    pieces: { id: number; operatorMoves: string[] }[];
+  };
+  const listed = body.pieces.find((p) => p.id === piece.id);
+  // Nothing to approve or reopen in the backlog.
+  assert.deepEqual(listed?.operatorMoves, []);
+
+  assert.equal(startDrafting(SESSION, { id: piece.id }).ok, true);
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), []);
+
+  assert.equal(submitForReview(SESSION, { id: piece.id }).ok, true);
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), [
+    "approve",
+    "request-changes",
+    "reopen",
+  ]);
+
+  assert.equal(approvePiece(reload(piece.id), "operator").ok, true);
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), ["reopen"]);
+
+  updateKit(projectId, { tokens: { "brand.accent": "#334455" } }, "operator");
+  assert.deepEqual(availableOperatorMoves(reload(piece.id)), ["reapprove", "reopen"]);
+
+  updateKit(
+    projectId,
+    { tokens: { "brand.accent": DEFAULT_BRAND_TOKENS["brand.accent"] } },
+    "operator"
+  );
 });
