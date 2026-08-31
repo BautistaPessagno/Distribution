@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  SaveAsTemplate,
+  TemplateList,
+  type CreativeTemplateRow,
+} from "../creative-templates";
 import { PieceMoves } from "../piece-moves";
 import { EmptyState, Shell } from "../shell";
 import {
@@ -246,6 +251,7 @@ function LifecyclePanel({
         </ul>
       )}
       <PieceMoves piece={piece} onMoved={onMoved} />
+      <SaveAsTemplate piece={piece} onSaved={onMoved} />
       {piece.outcome && (
         <p>
           <strong>Outcome:</strong> {piece.outcome}
@@ -306,6 +312,7 @@ function ChecksPanel({ checks }: { checks: CheckReports | null }) {
 
 export default function StudioPage() {
   const [pieces, setPieces] = useState<Piece[] | null>(null);
+  const [templates, setTemplates] = useState<CreativeTemplateRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [versions, setVersions] = useState<PieceVersion[] | null>(null);
@@ -313,10 +320,16 @@ export default function StudioPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/pieces");
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = (await res.json()) as { pieces: Piece[] };
-      setPieces(data.pieces);
+      const [piecesRes, templatesRes] = await Promise.all([
+        fetch("/api/pieces"),
+        fetch("/api/templates"),
+      ]);
+      if (!piecesRes.ok) throw new Error((await piecesRes.json()).error);
+      if (!templatesRes.ok) throw new Error((await templatesRes.json()).error);
+      setPieces(((await piecesRes.json()) as { pieces: Piece[] }).pieces);
+      setTemplates(
+        ((await templatesRes.json()) as { templates: CreativeTemplateRow[] }).templates
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -464,6 +477,8 @@ export default function StudioPage() {
             ))}
           </ul>
         )}
+
+        <TemplateList templates={templates} />
       </section>
     </Shell>
   );

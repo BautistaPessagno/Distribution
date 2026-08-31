@@ -31,6 +31,11 @@ export const ONBOARD_GUIDE = {
       "What stands between a piece and approval: brand errors and [NEED: ...] tokens block; quality findings never do.",
     "marketingos.reopen_piece":
       "Reopen a piece in review, approved, or planned back to drafting. Approval and the planned date are cleared.",
+    "marketingos.save_as_template":
+      "Save a piece's layout as a Creative Template: structure and token references kept, campaign content stripped.",
+    "marketingos.list_templates": "List the selected project's Creative Templates.",
+    "marketingos.instantiate_template":
+      "Start a new backlog piece from a Creative Template, bound to this session's pinned snapshot.",
     "marketingos.record_outcome": "Record what an exported piece did, moving it to measured.",
     "marketingos.get_brand_kit":
       "Read the selected project's Brand Kit: the versioned token table pieces reference. Pieces hold token names, never copied values.",

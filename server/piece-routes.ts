@@ -18,6 +18,7 @@ import {
   type OperatorMove,
 } from "./piece-lifecycle";
 import { exportPieceRecord } from "./renderer";
+import { saveAsTemplateRecord } from "./templates";
 import {
   getPieceById,
   listAllPieces,
@@ -150,16 +151,25 @@ export function pieceRouter(): Router {
     reopen: (piece) => reopenPiece(piece, "operator"),
   };
 
-  for (const [path, move] of Object.entries(MOVE_HANDLERS)) {
+  /**
+   * Every POST that acts on one piece: resolve the piece, run the act, and
+   * answer 200, 409 for a refusal, or 500 for a fault. Registering through
+   * one helper is what keeps a new act from quietly skipping the handling
+   * the others get.
+   */
+  function pieceAction(
+    path: string,
+    act: (piece: PieceRecord, req: Request) => GatewayResult | Promise<GatewayResult>
+  ): void {
     router.post(`/:id/${path}`, async (req, res) => {
       const piece = pieceOr404(req, res);
       if (!piece) return;
       try {
-        const result = await move(piece, req);
+        const result = await act(piece, req);
         res.status(result.ok ? 200 : 409).json(result.response);
       } catch (err) {
-        log("error", "piece move failed", {
-          move: path,
+        log("error", "piece action failed", {
+          action: path,
           pieceId: piece.id,
           error: err instanceof Error ? (err.stack ?? err.message) : String(err),
         });
@@ -167,6 +177,15 @@ export function pieceRouter(): Router {
       }
     });
   }
+
+  for (const [path, move] of Object.entries(MOVE_HANDLERS)) pieceAction(path, move);
+
+  // Not a lifecycle move: saving a template reads the piece and leaves it
+  // exactly where it was, so it is available whatever the status.
+  pieceAction("save-as-template", (piece, req) => {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    return saveAsTemplateRecord(piece, name || undefined, "operator");
+  });
 
   router.get("/:id", (req, res) => {
     const piece = pieceOr404(req, res);

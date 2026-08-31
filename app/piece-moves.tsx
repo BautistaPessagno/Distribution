@@ -28,6 +28,47 @@ const MOVE_LABELS: Record<string, string> = {
 /** The only move that needs anything typed in before it can be sent. */
 const NEEDS_DATE = "plan";
 
+/**
+ * Posting one act on one piece: the busy flag, the note it answers with, and
+ * the refusal message it answers with instead. Every screen that acts on a
+ * piece goes through this, so a refusal reads the same everywhere.
+ */
+export function usePieceAction(pieceId: number, onDone: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const run = useCallback(
+    async (action: string, body: Record<string, unknown> = {}) => {
+      setBusy(true);
+      setProblem(null);
+      setNote(null);
+      try {
+        const res = await fetch(`/api/pieces/${pieceId}/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = (await res.json()) as {
+          message?: string;
+          error?: string;
+          note?: string;
+        };
+        if (!res.ok) throw new Error(data.message ?? data.error ?? "The action was refused");
+        setNote(data.note ?? null);
+        onDone();
+      } catch (err) {
+        setProblem(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onDone, pieceId]
+  );
+
+  return { run, busy, note, problem };
+}
+
 export function PieceMoves({
   piece,
   only,
@@ -38,34 +79,9 @@ export function PieceMoves({
   only?: readonly string[];
   onMoved: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [date, setDate] = useState("");
-
-  const move = useCallback(
-    async (action: string) => {
-      setBusy(true);
-      setProblem(null);
-      setNote(null);
-      try {
-        const res = await fetch(`/api/pieces/${piece.id}/${action}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(action === NEEDS_DATE ? { date } : {}),
-        });
-        const data = (await res.json()) as { message?: string; error?: string; note?: string };
-        if (!res.ok) throw new Error(data.message ?? data.error ?? "The move was refused");
-        setNote(data.note ?? null);
-        onMoved();
-      } catch (err) {
-        setProblem(err instanceof Error ? err.message : String(err));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [date, onMoved, piece.id]
-  );
+  const { run, busy, note, problem } = usePieceAction(piece.id, onMoved);
+  const move = (action: string) => run(action, action === NEEDS_DATE ? { date } : {});
 
   const moves = only
     ? piece.operatorMoves.filter((m) => only.includes(m))

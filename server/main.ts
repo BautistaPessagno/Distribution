@@ -17,6 +17,7 @@ import { handleMcpRequest } from "./mcp";
 import { brandKitRouter } from "./brand-kit-routes";
 import { pieceRouter } from "./piece-routes";
 import { projectRouter } from "./project-routes";
+import { templateRouter } from "./template-routes";
 import { runPlanRouter } from "./run-plan-routes";
 import { isActiveProjectTokenHash } from "./projects";
 import { createStubProjectRouter, stubVerifyAgainstProjects } from "./stub-project";
@@ -86,6 +87,7 @@ async function main(): Promise<void> {
   server.use("/api/run-plans", runPlanRouter());
   server.use("/api/pieces", pieceRouter());
   server.use("/api/brand-kits", brandKitRouter());
+  server.use("/api/templates", templateRouter());
 
   // Dev stub Connected Project: a conformant project domain served by this
   // process so registration is testable before any real project exists.
