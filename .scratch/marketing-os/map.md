@@ -37,10 +37,11 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Define the Connected Project MCP contract](issues/08-define-connected-project-mcp-contract.md): one MCP gateway exposes MarketingOS methods and a selected project's versioned, provenance-aware, approval-gated read/write domain while the AI Host supplies all AI compute.
 - [Define the Creative Piece workflow](issues/10-define-creative-piece-workflow.md): a prototype-validated workflow with the backlog-to-measured lifecycle, atomic versioned edit batches, token-driven Brand Kit repaint with pinned approvals, brand errors gating approval, strip-and-save templates, and PNG-bundle export.
 - [Define the AI Host onboarding contract](issues/09-define-ai-host-onboarding-contract.md): one workspace-scoped connection with in-session project selection, guiding errors, onboard-plus-goal-routing discovery, a 19-tool two-domain catalog, digest-keyed approvals that never transit the host, and inline base64 image return with a manual fallback.
+- [Define the reasoning-module frontier](issues/11-define-reasoning-module-frontier.md): six native capabilities (positioning, audit, copy, hooks, social, experiments) with typed lineage-carrying artifacts, run plans only for multi-module chains, and Marketing AGI's honesty rules enforced as blocking invariants.
+- [Define the Account Operations workflow](issues/12-define-account-operations-workflow.md): durable slots with replaceable archived instances, checklist-based readiness, full proof-and-self-review Work Order cycles, blocking daily caps with a per-slot kill switch, and replacement that re-earns readiness.
 
 ## Not yet specified
 
-- Current platform-policy research for the exact warm-up and manual engagement actions selected by the account-operations decision.
 - Hosting, deployment, and recovery requirements after the technical architecture is selected.
 - Exact SEO, search-console, answer-engine, social, and product-metric ingestion after the measurement model identifies required observations.
 - Licensing and attribution mechanics if Marketing AGI text or rubrics are copied rather than cleanly reimplemented.
