@@ -42,6 +42,7 @@ Produce an implementation-ready MVP product specification for a personal, multi-
 - [Define the measurement and learning loop](issues/13-define-measurement-learning-loop.md): manual social snapshots plus project funnel reads, experiment-driven measure Work Orders, decision records feeding a per-project learning log, and ladder-labeled correlation-by-default attribution.
 - [Define authentication, authorization, and secrets design](issues/18-define-auth-and-secrets.md): MCP-spec OAuth for hosts, a single passkey Operator account, per-project service tokens, and one encrypted secrets store with reference-only usage and lint-checked responses.
 - [Research platform policies for warm-up actions](issues/19-research-platform-policies-for-warmup.md): manual genuine engagement is permitted on all four platforms, the same failure modes are banned everywhere, disclosure is platform-level on three, and only X publishes numeric limits, so non-X caps ship as labeled judgment calls.
+- [Prototype the dashboard information architecture](issues/14-prototype-dashboard-information-architecture.md): a guided single-step rail showing only the current step, setup-only onboarding that never writes to a project, approvals as explicit interruptions outside the rail, and the minimalist-ui visual language.
 
 ## Not yet specified
 
