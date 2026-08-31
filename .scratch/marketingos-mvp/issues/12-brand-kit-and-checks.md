@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 Deterministic renderer and PNG export.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Changing a kit token visibly repaints a drafting piece without touching its stored document
 - [ ] An off-kit raw color yields a check_brand error naming the layer
