@@ -4,7 +4,7 @@
 
 **Blocked by:** 19 Account Slots, Instances, and readiness.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] No Work Order completes without proof; retries create new attempts, never rewrites
 - [ ] Every transition is audited with actor and timestamp
