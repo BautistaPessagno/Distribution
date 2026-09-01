@@ -4,8 +4,8 @@
 
 **Blocked by:** 08 Method Library and goal routing, 13 Review and approval gate, 18 apply_change and Write Receipts, 20 Work Orders and the proof cycle, 24 Metric Snapshots.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The rail orders real due items; an empty day says so instead of inventing work
-- [ ] The prompt step composes from live state, not canned text
-- [ ] A pending digest interrupts without becoming a numbered step
+- [x] The rail orders real due items; an empty day says so instead of inventing work
+- [x] The prompt step composes from live state, not canned text
+- [x] A pending digest interrupts without becoming a numbered step

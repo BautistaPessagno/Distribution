@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApprovalInterruption, pendingOf, useApprovals } from "./approvals";
 import { PieceMoves } from "./piece-moves";
+import { DailyRailPanel, useDailyRail } from "./daily-rail";
 import { SetupRailPanel, useSetupRail } from "./setup-rail";
 import { EmptyState, Shell } from "./shell";
 
@@ -54,6 +55,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const approvals = useApprovals();
   const setup = useSetupRail();
+  const daily = useDailyRail();
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +103,16 @@ export default function Home() {
             <hr className="hairline" />
           </>
         )}
+
+        {/* The day's work, one step at a time, once there is a workspace for
+            it to run in. */}
+        {setup.rail?.complete && daily.rail && (
+          <>
+            <DailyRailPanel rail={daily.rail} />
+            <hr className="hairline" />
+          </>
+        )}
+        {daily.error && <p className="error-text">{daily.error}</p>}
 
         {error && <p className="error-text">{error}</p>}
 
