@@ -31,7 +31,8 @@ export function getDb(): Database.Database {
 //   7  Write Receipts and single-use approvals
 //   8  Account Slots, Account Instances, and readiness evidence
 //   9  Work Orders, their attempts, proofs, reviews, and transitions
-const SCHEMA_VERSION = "9";
+//  10  the capped action a Work Order hands out, and instance replacement
+const SCHEMA_VERSION = "10";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -212,6 +213,10 @@ function migrate(d: Database.Database): void {
       health TEXT NOT NULL DEFAULT 'unverified'
         CHECK (health IN ('unverified', 'healthy', 'impaired', 'lost')),
       lost_reason TEXT,
+      -- The instance this one replaced, so a slot's history is a chain
+      -- rather than a pile: the archived one keeps everything it did, and
+      -- the replacement says which account it stands in for.
+      replaces_instance_id INTEGER REFERENCES account_instances(id),
       archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       archived_at TEXT
@@ -253,6 +258,10 @@ function migrate(d: Database.Database): void {
       proof_requirement TEXT NOT NULL,
       -- The readiness checklist item this order earns, when it earns one.
       readiness_item TEXT,
+      -- The platform action this order hands out, when it hands one out.
+      -- This is what a daily cap counts; an order with no capped action
+      -- (provisioning, measuring) is not platform volume and is not counted.
+      capped_action TEXT,
       status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'awaiting_brand_approval', 'queued', 'claimed',
                           'in_progress', 'proof_submitted', 'under_review',
@@ -454,6 +463,13 @@ function migrate(d: Database.Database): void {
   addColumn(d, "pieces", "outcome", "TEXT");
   addColumn(d, "pieces", "image_state", "TEXT");
   addColumn(d, "pieces", "image_prompt", "TEXT");
+  addColumn(d, "work_orders", "capped_action", "TEXT");
+  addColumn(
+    d,
+    "account_instances",
+    "replaces_instance_id",
+    "INTEGER REFERENCES account_instances(id)"
+  );
 
   d.prepare(
     `INSERT INTO meta (key, value) VALUES ('schema_version', ?)

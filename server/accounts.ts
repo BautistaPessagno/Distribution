@@ -94,6 +94,8 @@ export interface AccountInstance {
   credentialsReference: string | null;
   health: InstanceHealth;
   lostReason: string | null;
+  /** The instance this one stands in for, when it replaced a lost account. */
+  replacesInstanceId: number | null;
   archived: boolean;
   createdAt: string;
   archivedAt: string | null;
@@ -130,6 +132,7 @@ interface InstanceRow {
   credentials_reference: string | null;
   health: InstanceHealth;
   lost_reason: string | null;
+  replaces_instance_id: number | null;
   archived: number;
   created_at: string;
   archived_at: string | null;
@@ -161,6 +164,7 @@ function rowToInstance(row: InstanceRow): AccountInstance {
     credentialsReference: row.credentials_reference,
     health: row.health,
     lostReason: row.lost_reason,
+    replacesInstanceId: row.replaces_instance_id,
     archived: row.archived === 1,
     createdAt: row.created_at,
     archivedAt: row.archived_at,
@@ -210,6 +214,24 @@ export function currentInstance(slotId: number): AccountInstance | null {
   const row = getDb()
     .prepare("SELECT * FROM account_instances WHERE slot_id = ? AND archived = 0 ORDER BY id DESC LIMIT 1")
     .get(slotId) as InstanceRow | undefined;
+  return row ? rowToInstance(row) : null;
+}
+
+/** The most recently archived instance of a slot, if the slot has lost one. */
+export function lastArchivedInstance(slotId: number): AccountInstance | null {
+  const row = getDb()
+    .prepare(
+      "SELECT * FROM account_instances WHERE slot_id = ? AND archived = 1 ORDER BY id DESC LIMIT 1"
+    )
+    .get(slotId) as InstanceRow | undefined;
+  return row ? rowToInstance(row) : null;
+}
+
+/** The instance that stands in for this one, when a replacement arrived. */
+export function replacementOf(instanceId: number): AccountInstance | null {
+  const row = getDb()
+    .prepare("SELECT * FROM account_instances WHERE replaces_instance_id = ? ORDER BY id ASC LIMIT 1")
+    .get(instanceId) as InstanceRow | undefined;
   return row ? rowToInstance(row) : null;
 }
 
@@ -433,11 +455,17 @@ export function addInstance(input: unknown, actor = "operator"): AccountInstance
     );
   }
 
+  // A slot's history is a chain, not a pile. When this instance is filling
+  // the space a lost one left, it says which one — so the archived account
+  // keeps everything it did and stays reachable from the account that
+  // stands in for it.
+  const replaced = lastArchivedInstance(slotId);
+
   const info = getDb()
     .prepare(
-      "INSERT INTO account_instances (slot_id, handle, credentials_reference) VALUES (?, ?, ?)"
+      "INSERT INTO account_instances (slot_id, handle, credentials_reference, replaces_instance_id) VALUES (?, ?, ?, ?)"
     )
-    .run(slotId, handle, credentialsReference ?? null);
+    .run(slotId, handle, credentialsReference ?? null, replaced?.id ?? null);
 
   const instance = getInstanceById(Number(info.lastInsertRowid));
   if (!instance) throw new Error("account instance did not persist");
@@ -447,6 +475,7 @@ export function addInstance(input: unknown, actor = "operator"): AccountInstance
     slotId,
     instanceId: instance.id,
     handle,
+    replacesInstanceId: replaced?.id ?? null,
     // The reference, never the credential — and only whether one exists.
     hasCredentialReference: credentialsReference !== undefined,
   });
@@ -654,6 +683,10 @@ export function instanceView(instance: AccountInstance): Record<string, unknown>
     health: instance.health,
     lostReason: instance.lostReason,
     archived: instance.archived,
+    // Both directions of the chain, so neither end of a replacement is a
+    // dead link on any surface.
+    replaces: instance.replacesInstanceId,
+    replacedBy: replacementOf(instance.id)?.id ?? null,
     createdAt: instance.createdAt,
     archivedAt: instance.archivedAt,
   };

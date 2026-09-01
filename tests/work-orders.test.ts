@@ -84,6 +84,13 @@ function slot(label: string) {
   });
 }
 
+/** A moment inside the shipped default windows, so the clock is not a variable. */
+function insideAllowedWindow(): Date {
+  const when = new Date();
+  when.setHours(10, 0, 0, 0);
+  return when;
+}
+
 function order(overrides: Record<string, unknown> = {}): WorkOrder {
   return createOrder({
     projectId,
@@ -397,7 +404,9 @@ test("a completed order checks off the readiness item it was standing behind", (
   });
   submitOrder(created.id);
   approveOrder(created.id);
-  claimOrder(created.id);
+  // The slot's allowed windows gate the claim (ticket 21), so this one is
+  // taken inside one rather than whenever the suite happens to run.
+  claimOrder(created.id, "operator", insideAllowedWindow());
   startOrder(created.id);
   submitProof({ orderId: created.id, proof: "Read for twelve minutes, noted four accounts." });
   beginReview(created.id);

@@ -9,7 +9,6 @@ import {
   instanceView,
   listInstances,
   listSlots,
-  markInstanceLost,
   markReady,
   pauseSlot,
   recordReadiness,
@@ -23,7 +22,7 @@ import { sessionTokenFrom } from "./auth-routes";
 import { log } from "./log";
 import { PLATFORM_POLICIES } from "./platform-policy";
 import { listProjects } from "./projects";
-import { orderView, spawnReplacementOrder } from "./work-orders";
+import { loseInstanceAndReplace, orderView } from "./work-orders";
 
 // Operator surface for Account Slots and Instances. Creating a platform
 // identity is a person's act — MarketingOS never creates one and never
@@ -176,10 +175,11 @@ export function accountRouter(): Router {
     try {
       const instanceId = Number(req.body?.instanceId);
       const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
-      const { instance, slot: updated } = markInstanceLost(instanceId, reason, "operator");
-      // The slot survives, so the replacement is real work someone has to
-      // do. It goes on the queue rather than waiting to be remembered.
-      const replacement = spawnReplacementOrder(updated.id, reason, "operator");
+      const {
+        instance,
+        slot: updated,
+        replacement,
+      } = loseInstanceAndReplace(instanceId, reason, "operator");
       res.json({
         instance: instanceView(instance),
         slot: slotView(updated),

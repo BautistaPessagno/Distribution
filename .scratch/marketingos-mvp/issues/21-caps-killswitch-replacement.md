@@ -4,8 +4,8 @@
 
 **Blocked by:** 20 Work Orders and the proof cycle.
 
-**Status:** in-progress
+**Status:** done
 
-- [ ] The cap blocks the next release with next-window messaging; nothing merely warns
-- [ ] The kill switch stops releases immediately and visibly
-- [ ] Replacement preserves the archived instance and links it from the new one
+- [x] The cap blocks the next release with next-window messaging; nothing merely warns
+- [x] The kill switch stops releases immediately and visibly
+- [x] Replacement preserves the archived instance and links it from the new one
