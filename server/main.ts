@@ -19,6 +19,7 @@ import { approvalRouter } from "./approval-routes";
 import { workOrderRouter } from "./work-order-routes";
 import { deliveryRouter } from "./delivery-routes";
 import { experimentRouter } from "./experiment-routes";
+import { snapshotRouter } from "./snapshot-routes";
 import { assetRouter } from "./asset-routes";
 import { brandKitRouter } from "./brand-kit-routes";
 import { pieceRouter } from "./piece-routes";
@@ -100,6 +101,7 @@ async function main(): Promise<void> {
   server.use("/api/work-orders", workOrderRouter());
   server.use("/api/deliveries", deliveryRouter());
   server.use("/api/experiments", experimentRouter());
+  server.use("/api/snapshots", snapshotRouter());
 
   // Dev stub Connected Project: a conformant project domain served by this
   // process so registration is testable before any real project exists.

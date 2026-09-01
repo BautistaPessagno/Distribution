@@ -21,6 +21,30 @@ export const REQUIRED_RESOURCES = [
 
 export type RequiredResource = (typeof REQUIRED_RESOURCES)[number];
 
+/**
+ * Optional capabilities a project domain may declare in its manifest. A
+ * project that does not declare `metrics` has no product funnel to read,
+ * which is a fact about the project rather than a fault in it.
+ */
+export const OPTIONAL_CAPABILITIES = ["metrics"] as const;
+export type OptionalCapability = (typeof OPTIONAL_CAPABILITIES)[number];
+
+/**
+ * A product-funnel read. The numbers matter less than where they came
+ * from: `snapshotId` and `version` are the project's own name for the state
+ * these were read out of, so a snapshot recorded here can always be traced
+ * back to the exact project state that produced it.
+ */
+export interface MetricsBundle {
+  snapshotId: string;
+  version: number;
+  /** When the project observed these, in its own reckoning. */
+  observedAt: string;
+  /** How the project got them, said in its own words. */
+  collectionMethod: string;
+  metrics: { name: string; value: number; unit?: string }[];
+}
+
 // Structured error codes from the Connected Project MCP contract, plus
 // `invalid_token` for the bearer-auth boundary.
 export type ProjectErrorCode =
@@ -102,6 +126,14 @@ export interface ProjectDomainImpl {
    * writes at all, which is the same thing its write policy should say.
    */
   apply?(request: ApplyRequest): ApplyResult | Promise<ApplyResult>;
+
+  /**
+   * Optional. The product funnel, if this project has one. A domain that
+   * does not implement this must not declare the `metrics` capability, and
+   * a domain that declares it must implement it — the conformance suite
+   * checks both directions.
+   */
+  metrics?(): MetricsBundle | Promise<MetricsBundle>;
 }
 
 function sendError(res: Response, status: number, error: ProjectError): void {
@@ -168,6 +200,32 @@ export function createProjectDomainRouter(impl: ProjectDomainImpl): Router {
       return;
     }
     res.json(impl.resource(name as RequiredResource));
+  });
+
+  router.get("/capabilities/metrics", async (_req, res) => {
+    if (!impl.metrics) {
+      sendError(res, 404, {
+        code: "unsupported_capability",
+        message: "This project domain publishes no product funnel",
+        retryable: false,
+        recovery: "Consult the manifest for the capabilities this project declares",
+      });
+      return;
+    }
+    try {
+      res.json(await impl.metrics());
+    } catch (err) {
+      if (isProjectError(err)) {
+        sendError(res, err.retryable ? 503 : 400, err);
+        return;
+      }
+      sendError(res, 503, {
+        code: "temporarily_unavailable",
+        message: "The product funnel could not be read just now",
+        retryable: true,
+        recovery: "Retry the read, or record the observation by hand instead",
+      });
+    }
   });
 
   // A change set is control JSON, not payload: the operations name fields

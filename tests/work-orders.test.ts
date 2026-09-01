@@ -506,13 +506,25 @@ test("the Operator walks an order end to end over HTTP", async () => {
     body: JSON.stringify({ proof: "Reach 1,204, read at 09:10." }),
   });
   await api(`/api/work-orders/${id}/review`, { method: "POST" });
+  // A measure order files its numbers as it completes (ticket 24), so
+  // completing one without them is refused.
+  const numberless = await api<{ error: string }>(`/api/work-orders/${id}/complete`, {
+    method: "POST",
+    body: JSON.stringify({ note: "ok" }),
+  });
+  assert.equal(numberless.status, 400);
+  assert.match(numberless.body.error, /at least one metric with its value/);
+
   const done = await api<{
     order: { status: string; attemptCount: number };
-    readiness: unknown;
-  }>(`/api/work-orders/${id}/complete`, { method: "POST", body: JSON.stringify({ note: "ok" }) });
+    snapshots: { metric: string; value: number }[];
+  }>(`/api/work-orders/${id}/complete`, {
+    method: "POST",
+    body: JSON.stringify({ note: "ok", readings: [{ metric: "reach", value: 1204 }] }),
+  });
   assert.equal(done.body.order.status, "completed");
   assert.equal(done.body.order.attemptCount, 1);
-  assert.equal(done.body.readiness, null);
+  assert.deepEqual(done.body.snapshots.map((s) => [s.metric, s.value]), [["reach", 1204]]);
 
   const listed = await api<{ orders: { id: number; projectName: string }[] }>("/api/work-orders");
   assert.ok(listed.body.orders.some((o) => o.id === id && o.projectName === "KeepAnalog"));

@@ -11,6 +11,7 @@ import {
   type ApplyRequest,
   type ApplyResult,
   type ChangesPage,
+  type MetricsBundle,
   type ProjectManifest,
   type RequiredResource,
   type ResourceEnvelope,
@@ -68,6 +69,9 @@ export function createStubProjectRouter(verifyToken: (token: string) => boolean)
   // Apply is idempotent on the digest, as the contract requires: the same
   // digest twice returns the first result rather than writing twice.
   const applied = new Map<string, ApplyResult>();
+  // Bumped per funnel read, so two reads carry different provenance the
+  // way two reads of a real project would.
+  let funnelReads = 0;
 
   return createProjectDomainRouter({
     manifest(): ProjectManifest {
@@ -75,12 +79,31 @@ export function createStubProjectRouter(verifyToken: (token: string) => boolean)
         name: "dev-stub-project",
         contractVersion: PROJECT_CONTRACT_VERSION,
         resources: [...REQUIRED_RESOURCES],
-        capabilities: [],
+        // The stub publishes a product funnel, so the metrics capability
+        // has something conformant to read in development.
+        capabilities: ["metrics"],
       };
     },
     resource(name: RequiredResource): ResourceEnvelope {
       const entry = data[name];
       return { resource: name, state: entry.state, version: versions[name], data: entry.data };
+    },
+    metrics(): MetricsBundle {
+      // Deterministic numbers with real provenance: what matters in the
+      // stub is that a reading can be traced to the exact state it came
+      // out of, not that the values mean anything.
+      funnelReads += 1;
+      return {
+        snapshotId: `dev-stub-funnel-${funnelReads}`,
+        version: cursor,
+        observedAt: new Date().toISOString(),
+        collectionMethod: "the dev stub's in-memory counters, read at request time",
+        metrics: [
+          { name: "signups", value: 40 + funnelReads, unit: "people" },
+          { name: "activated", value: 12 + funnelReads, unit: "people" },
+          { name: "trial_to_paid", value: 0.21, unit: "ratio" },
+        ],
+      };
     },
     changes(after: number): ChangesPage {
       const entries = [

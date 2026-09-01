@@ -60,6 +60,8 @@ export interface WorkOrder {
   card: WorkOrderCard;
   readinessLabel: string | null;
   cappedAction: string | null;
+  /** "scheduled", "unscheduled", or null for anything that is not a reading. */
+  scheduling: string | null;
   /** Why the queue is shut for this order, and when it opens again. */
   release: ReleaseGate | null;
   attempts: Attempt[];
@@ -164,9 +166,86 @@ function AttemptHistory({ attempts }: { attempts: Attempt[] }) {
   );
 }
 
+interface Reading {
+  metric: string;
+  value: number;
+}
+
+/**
+ * The numbers a measure order came back with. They are entered here, in the
+ * review, because completing a measure order files them in the same act —
+ * an order that completed without its numbers would be the work having
+ * happened and the record having lost it.
+ */
+function MeasureReadings({
+  readings,
+  onChange,
+}: {
+  readings: Reading[];
+  onChange: (next: Reading[]) => void;
+}) {
+  const [metric, setMetric] = useState("");
+  const [value, setValue] = useState("");
+
+  return (
+    <div className="body-text">
+      <strong>Readings</strong>
+      <ul>
+        {readings.map((reading) => (
+          <li key={reading.metric}>
+            {reading.metric}: {reading.value}{" "}
+            <button
+              onClick={() => onChange(readings.filter((r) => r.metric !== reading.metric))}
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <label>
+        <span className="tag">metric</span>{" "}
+        <input
+          aria-label="Metric name"
+          placeholder="saves"
+          value={metric}
+          onChange={(e) => setMetric(e.target.value)}
+        />
+      </label>{" "}
+      <label>
+        <span className="tag">value</span>{" "}
+        <input
+          aria-label="Metric value"
+          inputMode="decimal"
+          placeholder="61"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      </label>{" "}
+      <button
+        disabled={!metric.trim() || !Number.isFinite(Number(value)) || value.trim() === ""}
+        onClick={() => {
+          onChange([
+            ...readings.filter((r) => r.metric !== metric.trim()),
+            { metric: metric.trim(), value: Number(value) },
+          ]);
+          setMetric("");
+          setValue("");
+        }}
+      >
+        Add
+      </button>
+      <p>
+        Each reading is appended, never an update: a further reading of the same metric is
+        another observation, because two readings are two facts.
+      </p>
+    </div>
+  );
+}
+
 /** The proof box, and the two things review can say about what lands in it. */
 function ProofPanel({ order, onChanged }: { order: WorkOrder; onChanged: () => void }) {
   const [text, setText] = useState("");
+  const [readings, setReadings] = useState<Reading[]>([]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -210,6 +289,9 @@ function ProofPanel({ order, onChanged }: { order: WorkOrder; onChanged: () => v
   if (order.status === "under_review") {
     return (
       <div className="body-text">
+        {order.kind === "measure" && (
+          <MeasureReadings readings={readings} onChange={setReadings} />
+        )}
         <label>
           <span className="tag">review note</span>
           <textarea
@@ -221,16 +303,18 @@ function ProofPanel({ order, onChanged }: { order: WorkOrder; onChanged: () => v
           />
         </label>
         <button
-          disabled={busy}
+          disabled={busy || (order.kind === "measure" && readings.length === 0)}
           onClick={async () => {
             setBusy(true);
             const failure = await post(`/api/work-orders/${order.id}/complete`, {
               note: text.trim(),
+              ...(order.kind === "measure" ? { readings } : {}),
             });
             setBusy(false);
             setProblem(failure);
             if (!failure) {
               setText("");
+              setReadings([]);
               onChanged();
             }
           }}
@@ -273,6 +357,13 @@ export function WorkOrderCardView({
           {order.status.replace(/_/g, " ")}
         </span>{" "}
         <span className="tag">{order.kind}</span>{" "}
+        {order.scheduling && (
+          <>
+            <span className={`tag ${order.scheduling === "scheduled" ? "tag-info" : "tag-warn"}`}>
+              {order.scheduling}
+            </span>{" "}
+          </>
+        )}
         <strong>{order.title}</strong>{" "}
         <span className="body-text">{order.projectName}</span>
       </div>
