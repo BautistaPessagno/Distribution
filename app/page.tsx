@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApprovalInterruption, pendingOf, useApprovals } from "./approvals";
 import { PieceMoves } from "./piece-moves";
 import { DailyRailPanel, useDailyRail } from "./daily-rail";
+import { HabitCheckPanel, useHabitCheck } from "./habit-check";
 import { SetupRailPanel, useSetupRail } from "./setup-rail";
 import { EmptyState, Shell } from "./shell";
 
@@ -56,6 +57,11 @@ export default function Home() {
   const approvals = useApprovals();
   const setup = useSetupRail();
   const daily = useDailyRail();
+  // The rail's brief step names the project it is for, which is the same
+  // project the habit check belongs to.
+  const railProjectId =
+    daily.rail?.steps.find((s) => s.subject.kind === "project")?.subject.id ?? null;
+  const habit = useHabitCheck(railProjectId);
 
   const load = useCallback(async () => {
     try {
@@ -100,6 +106,15 @@ export default function Home() {
         {setup.rail && !setup.rail.complete && (
           <>
             <SetupRailPanel rail={setup.rail} onChanged={setup.reload} />
+            <hr className="hairline" />
+          </>
+        )}
+
+        {/* Due, and therefore worth interrupting for: the loop's real test
+            is whether it is still running a month later. */}
+        {habit.due && habit.check && (
+          <>
+            <HabitCheckPanel check={habit.check} onAnswered={habit.reload} />
             <hr className="hairline" />
           </>
         )}

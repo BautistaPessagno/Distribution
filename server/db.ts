@@ -37,7 +37,8 @@ export function getDb(): Database.Database {
 //  13  Metric Snapshots from both observation sources
 //  14  decision records and the per-project learning log
 //  15  setup rail step skips
-const SCHEMA_VERSION = "15";
+//  16  the week-four habit check
+const SCHEMA_VERSION = "16";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -600,6 +601,18 @@ function migrate(d: Database.Database): void {
       step TEXT PRIMARY KEY,
       skipped_by TEXT NOT NULL,
       skipped_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    -- The week-four habit check. Scheduled when the acceptance pass
+    -- completes and surfaced when it comes due, because the MVP's real
+    -- question is whether the loop is still running a month later.
+    CREATE TABLE IF NOT EXISTS habit_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      due_at TEXT NOT NULL,
+      scheduled_by TEXT NOT NULL,
+      scheduled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      answer TEXT,
+      answered_at TEXT
     );
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,
