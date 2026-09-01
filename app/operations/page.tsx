@@ -2,6 +2,7 @@
 
 import { SlotCard, useSlots } from "../account-slots";
 import { ChangeCard, pendingOf, useApprovals } from "../approvals";
+import { DeliveryCard, useDeliveries } from "../deliveries";
 import { EmptyState, Shell } from "../shell";
 import { useWorkOrders, WorkOrderCardView } from "../work-orders";
 
@@ -14,6 +15,7 @@ export default function OperationsPage() {
   const { changes, error, reload } = useApprovals();
   const slots = useSlots();
   const orders = useWorkOrders();
+  const deliveries = useDeliveries();
   const pending = pendingOf(changes);
   const decided = (changes ?? []).filter((c) => c.status !== "pending");
 
@@ -77,6 +79,27 @@ export default function OperationsPage() {
           <ul className="connection-list">
             {slots.slots.map((slot) => (
               <SlotCard key={slot.id} slot={slot} onChanged={slots.reload} />
+            ))}
+          </ul>
+        )}
+
+        <hr className="hairline" />
+        <h2 className="headline" style={{ fontSize: "1.1rem" }}>
+          Deliveries
+        </h2>
+        <p className="body-text">
+          Exported work reaches an account by hand. A release binds to exact bytes, a
+          delivery pairs it with one account under a key that can never post it twice, and
+          nothing counts as posted until someone comes back with the link.
+        </p>
+        {deliveries.error && <p className="error-text">{deliveries.error}</p>}
+        {deliveries.targets !== null && deliveries.targets.length === 0 && (
+          <p className="body-text">No deliveries yet.</p>
+        )}
+        {deliveries.targets !== null && deliveries.targets.length > 0 && (
+          <ul className="connection-list">
+            {deliveries.targets.map((target) => (
+              <DeliveryCard key={target.id} target={target} onChanged={deliveries.reload} />
             ))}
           </ul>
         )}

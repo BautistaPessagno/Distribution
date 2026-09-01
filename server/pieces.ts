@@ -41,6 +41,19 @@ export type PieceStatus = (typeof PIECE_STATUSES)[number];
  */
 export const PINNED_STATUSES: readonly PieceStatus[] = ["approved", "planned"];
 
+/**
+ * A piece at or past approval. Exporting and measuring happen after the
+ * Operator approved the document, so a piece in either of those is approved
+ * work — asking only about the literal `approved` status would refuse a
+ * piece for having got further.
+ */
+export const APPROVED_STATUSES: readonly PieceStatus[] = [
+  "approved",
+  "planned",
+  "exported",
+  "measured",
+];
+
 const frameSchema = z
   .object({
     x: z.number(),

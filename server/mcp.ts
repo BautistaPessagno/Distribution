@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { listSlots, slotView } from "./accounts";
 import { listOrders, orderView } from "./work-orders";
+import { listReleases, listTargets, releaseView, targetView } from "./deliveries";
 import { currentKit } from "./brand-kit";
 import { checkBrand, checkQuality } from "./checks";
 import {
@@ -269,6 +270,26 @@ function buildServer(sessionKey: string): McpServer {
       return lintedJson({
         context: sessionContext(sessionKey),
         orders: listOrders({ projectId: pinned.projectId }).map(orderView),
+      });
+    }
+  );
+  server.registerTool(
+    "marketingos.list_deliveries",
+    {
+      description:
+        "List the selected Connected Project's Content Releases and the Delivery Targets pairing each with one Account Instance: idempotency key, queue position, schedule window, disclosure checklist, state, and the destination permalink once verified. Read-only. MarketingOS publishes nothing; a delivery is the record of a person posting one release as one account.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      const releases = listReleases(pinned.projectId);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        releases: releases.map(releaseView),
+        targets: releases.flatMap((release) =>
+          listTargets({ releaseId: release.id }).map(targetView)
+        ),
       });
     }
   );

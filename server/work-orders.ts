@@ -36,7 +36,7 @@ import {
 } from "./accounts";
 import { audit } from "./audit";
 import { getDb } from "./db";
-import { getPieceById } from "./pieces";
+import { APPROVED_STATUSES, getPieceById } from "./pieces";
 import { policyFor } from "./platform-policy";
 import { releaseGate } from "./release-gate";
 
@@ -472,7 +472,7 @@ export function approveOrder(orderId: number, actor = "operator"): WorkOrder {
   if (order.pieceId !== null) {
     const piece = getPieceById(order.pieceId);
     if (!piece) throw new WorkOrderError(404, `No piece #${order.pieceId}`);
-    if (piece.status !== "approved" && piece.status !== "planned") {
+    if (!APPROVED_STATUSES.includes(piece.status)) {
       throw new WorkOrderError(
         409,
         `"${piece.title}" is ${piece.status}. A Work Order that publishes a piece waits for the piece to be approved.`

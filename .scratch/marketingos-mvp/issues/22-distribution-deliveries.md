@@ -4,8 +4,8 @@
 
 **Blocked by:** 14 Lifecycle completion, 21 Caps, kill switch, and replacement.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The same idempotency key can never create a second target
-- [ ] No post order releases without an immutable approved release and completed disclosure checklist
-- [ ] verified_posted requires proof including the destination permalink
+- [x] The same idempotency key can never create a second target
+- [x] No post order releases without an immutable approved release and completed disclosure checklist
+- [x] verified_posted requires proof including the destination permalink
