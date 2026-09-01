@@ -18,6 +18,7 @@ export const ONBOARD_GUIDE = {
     "Platform work happens through Work Orders a person claims and completes. Nothing completes without proof, and a retry is a new attempt rather than a rewrite of the last one.",
     "Daily caps, allowed windows, and a per-slot pause block the release of work rather than warning about it. A refusal names when the queue opens again. Caps govern only what MarketingOS hands to a person; the person still performs every platform action.",
     "Distribution is by hand and verifiable. A Content Release binds immutably to one export bundle by digest; a Delivery Target pairs it with one Account Instance under an idempotency key that can never create a second delivery; and nothing is verified as posted without the destination permalink.",
+    "An experiment concludes only at its predeclared stop condition and sample, producing a typed decision with an evidence assessment: what it supports, what it does not, its evidence-ladder rung, and the cheapest next observation. Correlations may justify a test and are never proof. Read the learning log before writing a brief, and never quote a conclusion without the rung it carries.",
     "Every Metric Snapshot names its source: read by hand through a measure Work Order, or read from the Connected Project's own metrics capability with the project snapshot id and version it came from. Observations are never overwritten; a further reading is another row.",
     "Experiments are predeclared in full before work ships — one variable, one primary metric, the decision rule, the sample, the stop condition — and the declaration cannot be edited afterwards. Observation points schedule their own measure Work Orders when a delivery is verified posted. An ad-hoc reading is still possible and is labelled unscheduled wherever it appears.",
     "No secret material ever appears in MCP responses, method text, Work Orders, proofs, or logs.",
@@ -48,6 +49,8 @@ export const ONBOARD_GUIDE = {
     "marketingos.instantiate_template":
       "Start a new backlog piece from a Creative Template, bound to this session's pinned snapshot.",
     "marketingos.record_outcome": "Record what an exported piece did, moving it to measured.",
+    "marketingos.get_learning_log":
+      "Read the selected project's learning log: every concluded experiment with its decision, what the evidence can and cannot support, its ladder rung, and the cheapest next observation. Read-only.",
     "marketingos.list_metric_snapshots":
       "Read the selected project's Metric Snapshots with their source, collection method, timestamp, and — for funnel reads — the project snapshot provenance. Read-only.",
     "marketingos.list_experiments":

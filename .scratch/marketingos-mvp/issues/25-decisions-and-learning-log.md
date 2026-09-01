@@ -4,8 +4,8 @@
 
 **Blocked by:** 24 Metric Snapshots.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] No winner can be declared before the predeclared sample and stop condition
-- [ ] Every conclusion carries its ladder rung; funnel co-movements are labeled correlated
-- [ ] A host retrieves the learning log and record_outcome works end to end
+- [x] No winner can be declared before the predeclared sample and stop condition
+- [x] Every conclusion carries its ladder rung; funnel co-movements are labeled correlated
+- [x] A host retrieves the learning log and record_outcome works end to end

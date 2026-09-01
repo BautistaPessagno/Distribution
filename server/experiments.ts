@@ -309,11 +309,10 @@ export function stopExperiment(experimentId: number, actor = "operator"): Experi
   return setStatus(experimentId, "stopped", actor);
 }
 
-export function concludeExperiment(experimentId: number, actor = "operator"): Experiment {
-  const experiment = getExperimentById(experimentId);
-  if (!experiment) throw new ExperimentError(404, `No experiment #${experimentId}`);
-  return setStatus(experimentId, "concluded", actor);
-}
+// There is deliberately no plain `conclude` here. An experiment reaches
+// `concluded` only through the decision record of ticket 25, which is what
+// holds it to the sample and stop condition it predeclared. A status setter
+// that skipped that would make every one of those guarantees optional.
 
 // ---------------------------------------------------------------------------
 // Enrolment and scheduling
