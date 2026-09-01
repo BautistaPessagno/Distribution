@@ -3,6 +3,7 @@ import { validateSession } from "./auth";
 import { sessionTokenFrom } from "./auth-routes";
 import { log } from "./log";
 import { listProjects } from "./projects";
+import { releaseGate } from "./release-gate";
 import {
   approveOrder,
   beginReview,
@@ -93,6 +94,13 @@ export function workOrderRouter(): Router {
     const order = orderOr404(req, res);
     if (!order) return;
     res.json({ order: orderView(order) });
+  });
+
+  /** Why the queue is shut for this order, before anyone tries the move. */
+  router.get("/:id/release", (req, res) => {
+    const order = orderOr404(req, res);
+    if (!order) return;
+    res.json({ release: releaseGate(order) });
   });
 
   // The moves that need nothing but the actor.

@@ -43,6 +43,14 @@ export interface WorkOrderCard {
   reminder: string | null;
 }
 
+export interface ReleaseGate {
+  open: boolean;
+  reason: string | null;
+  message: string;
+  nextOpensAt: string | null;
+  cap: { action: string; perDay: number; releasedToday: number } | null;
+}
+
 export interface WorkOrder {
   id: number;
   projectName: string;
@@ -51,6 +59,9 @@ export interface WorkOrder {
   status: string;
   card: WorkOrderCard;
   readinessLabel: string | null;
+  cappedAction: string | null;
+  /** Why the queue is shut for this order, and when it opens again. */
+  release: ReleaseGate | null;
   attempts: Attempt[];
   attemptCount: number;
   history: Transition[];
@@ -279,9 +290,25 @@ export function WorkOrderCardView({
         </p>
       )}
 
+      {order.release && !order.release.open && (
+        <p className="body-text">
+          <span className={`tag ${order.release.reason === "paused" ? "tag-bad" : "tag-warn"}`}>
+            {order.release.reason === "paused" ? "halted" : "queue shut"}
+          </span>{" "}
+          {order.release.message}
+        </p>
+      )}
+      {order.release?.cap && order.release.open && (
+        <p className="body-text">
+          <span className="tag tag-warn">judgment call</span> {order.release.cap.releasedToday} of{" "}
+          {order.release.cap.perDay} {order.release.cap.action} orders released today. This cap is
+          ours, not a volume the platform sanctioned.
+        </p>
+      )}
+
       {move && (
         <button
-          disabled={busy}
+          disabled={busy || (move.path === "claim" && order.release?.open === false)}
           onClick={async () => {
             setBusy(true);
             const failure = await post(`/api/work-orders/${order.id}/${move.path}`);

@@ -16,6 +16,7 @@ export const ONBOARD_GUIDE = {
     "MarketingOS never generates images. Every asset records its origin, prompt lineage, and rights notes, or it is refused.",
     "MarketingOS never creates a platform account and never performs a platform action. Account readiness is an explicit evidenced checklist, never elapsed time, and daily caps are our judgment calls rather than platform-sanctioned volumes.",
     "Platform work happens through Work Orders a person claims and completes. Nothing completes without proof, and a retry is a new attempt rather than a rewrite of the last one.",
+    "Daily caps, allowed windows, and a per-slot pause block the release of work rather than warning about it. A refusal names when the queue opens again. Caps govern only what MarketingOS hands to a person; the person still performs every platform action.",
     "No secret material ever appears in MCP responses, method text, Work Orders, proofs, or logs.",
   ],
   tools: {

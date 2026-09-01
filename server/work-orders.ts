@@ -26,15 +26,19 @@ import { z } from "zod";
 import {
   currentInstance,
   getSlotById,
+  markInstanceLost,
   READINESS_ITEMS,
   READINESS_LABELS,
   recordReadiness,
+  type AccountInstance,
+  type AccountSlot,
   type ReadinessItem,
 } from "./accounts";
 import { audit } from "./audit";
 import { getDb } from "./db";
 import { getPieceById } from "./pieces";
 import { policyFor } from "./platform-policy";
+import { releaseGate } from "./release-gate";
 
 export const ORDER_KINDS = [
   "provision",
@@ -75,6 +79,8 @@ export interface WorkOrder {
   instruction: string;
   proofRequirement: string;
   readinessItem: ReadinessItem | null;
+  /** The platform action a daily cap counts this order against, if any. */
+  cappedAction: string | null;
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
@@ -125,6 +131,7 @@ interface OrderRow {
   instruction: string;
   proof_requirement: string;
   readiness_item: ReadinessItem | null;
+  capped_action: string | null;
   status: OrderStatus;
   created_at: string;
   updated_at: string;
@@ -142,6 +149,7 @@ function rowToOrder(row: OrderRow): WorkOrder {
     instruction: row.instruction,
     proofRequirement: row.proof_requirement,
     readinessItem: row.readiness_item,
+    cappedAction: row.capped_action,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -285,7 +293,19 @@ export const createOrderSchema = z.object({
   pieceId: z.number().int().optional(),
   proofRequirement: z.string().min(1).max(500).optional(),
   readinessItem: z.enum(READINESS_ITEMS).optional(),
+  /**
+   * The platform action this order hands out. A posting or commenting order
+   * is obvious enough to default; a warm-up order says which action it is,
+   * because "warm up the account" covers a follow and a like alike.
+   */
+  cappedAction: z.string().min(1).max(40).optional(),
 });
+
+/** What a kind counts against when nobody said. */
+const DEFAULT_CAPPED_ACTION: Partial<Record<OrderKind, string>> = {
+  post: "post",
+  comment: "comment",
+};
 
 /**
  * A Work Order starts as a draft. It names what a person is to do, and —
@@ -333,8 +353,8 @@ export function createOrder(input: unknown, actor = "operator"): WorkOrder {
     .prepare(
       `INSERT INTO work_orders
         (project_id, slot_id, instance_id, piece_id, kind, title, instruction,
-         proof_requirement, readiness_item)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         proof_requirement, readiness_item, capped_action)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       spec.projectId,
@@ -345,7 +365,8 @@ export function createOrder(input: unknown, actor = "operator"): WorkOrder {
       spec.title,
       spec.instruction,
       spec.proofRequirement ?? KIND_PROOF[spec.kind],
-      spec.readinessItem ?? null
+      spec.readinessItem ?? null,
+      spec.cappedAction ?? DEFAULT_CAPPED_ACTION[spec.kind] ?? null
     );
 
   const order = getOrderById(Number(info.lastInsertRowid));
@@ -461,10 +482,25 @@ export function approveOrder(orderId: number, actor = "operator"): WorkOrder {
   return transition(order, "approve", actor);
 }
 
-/** Claim the order. This opens the attempt that everything after attaches to. */
-export function claimOrder(orderId: number, actor = "operator"): WorkOrder {
+/**
+ * Claim the order. This is the moment work is handed to a person, so it is
+ * the moment the safety rails apply: a paused slot, a shut window, or a
+ * spent cap refuses here, and the refusal says when the queue opens again.
+ * They block. Nothing in this path merely warns.
+ */
+export function claimOrder(orderId: number, actor = "operator", now = new Date()): WorkOrder {
   const order = orderOr404(orderId);
   requireStatus(order, "claim");
+
+  const gate = releaseGate(order, now);
+  if (!gate.open) {
+    throw new WorkOrderError(
+      409,
+      gate.message,
+      gate.nextOpensAt ? [`The queue opens ${gate.nextOpensAt}.`] : []
+    );
+  }
+
   const next = (currentAttempt(orderId)?.attemptNo ?? 0) + 1;
   getDb()
     .prepare("INSERT INTO work_order_attempts (order_id, attempt_no, claimed_by) VALUES (?, ?, ?)")
@@ -719,6 +755,28 @@ function lowerFirst(text: string): string {
   return /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
 }
 
+export interface LossOutcome {
+  instance: AccountInstance;
+  slot: AccountSlot;
+  /** The work the loss created, or null when the slot hands out none. */
+  replacement: WorkOrder | null;
+}
+
+/**
+ * Lose an instance and queue the work its loss created, in one act. Keeping
+ * the two together is what stops a slot from quietly sitting empty: the
+ * replacement is real work someone has to do, so it goes on the queue
+ * rather than waiting to be remembered.
+ */
+export function loseInstanceAndReplace(
+  instanceId: number,
+  reason: string,
+  actor = "operator"
+): LossOutcome {
+  const { instance, slot } = markInstanceLost(instanceId, reason, actor);
+  return { instance, slot, replacement: spawnReplacementOrder(slot.id, reason, actor) };
+}
+
 /**
  * A slot whose instance is gone needs a replacement, and the replacement is
  * a person's work like everything else. Spawned already queued: the Operator
@@ -772,6 +830,10 @@ export function orderView(order: WorkOrder): Record<string, unknown> {
     // it. A rejected attempt stays here; that is the point of it.
     attempts,
     attemptCount: attempts.length,
+    cappedAction: order.cappedAction,
+    // Visible before anyone tries: why the queue is shut for this order, and
+    // when it opens again.
+    release: TERMINAL_STATUSES.includes(order.status) ? null : releaseGate(order),
     history: transitionsFor(order.id),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
