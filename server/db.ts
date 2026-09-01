@@ -32,7 +32,8 @@ export function getDb(): Database.Database {
 //   8  Account Slots, Account Instances, and readiness evidence
 //   9  Work Orders, their attempts, proofs, reviews, and transitions
 //  10  the capped action a Work Order hands out, and instance replacement
-const SCHEMA_VERSION = "10";
+//  11  Content Releases, Delivery Targets, and the disclosure checklist
+const SCHEMA_VERSION = "11";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -347,6 +348,81 @@ function migrate(d: Database.Database): void {
     BEFORE DELETE ON work_order_transitions
     BEGIN
       SELECT RAISE(ABORT, 'a transition is a permanent record');
+    END;
+    -- A Content Release is the immutable binding between a piece and the
+    -- export bundle that left the building. The digest is over the bundle's
+    -- own manifest, so a release names not just "the export" but exactly
+    -- the bytes that were approved. Insert-only, and the triggers below are
+    -- what make that true.
+    CREATE TABLE IF NOT EXISTS content_releases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      piece_id INTEGER NOT NULL REFERENCES pieces(id),
+      export_id INTEGER NOT NULL REFERENCES piece_exports(id),
+      -- One release per export bundle: re-releasing the same bytes returns
+      -- the release that already exists rather than minting a second one.
+      digest TEXT NOT NULL UNIQUE,
+      bundle_path TEXT NOT NULL,
+      manifest TEXT NOT NULL,
+      created_by TEXT NOT NULL DEFAULT 'operator',
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    -- A Delivery Target pairs one release with one Account Instance. The
+    -- idempotency key is unique across the whole table, so a retried
+    -- request can never become a second delivery of the same thing.
+    CREATE TABLE IF NOT EXISTS delivery_targets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      release_id INTEGER NOT NULL REFERENCES content_releases(id),
+      instance_id INTEGER NOT NULL REFERENCES account_instances(id),
+      slot_id INTEGER NOT NULL REFERENCES account_slots(id),
+      idempotency_key TEXT NOT NULL UNIQUE,
+      queue_position INTEGER NOT NULL,
+      window_start TEXT NOT NULL,
+      window_end TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'released_to_operator', 'posting',
+                          'proof_submitted', 'verified_posted', 'failed',
+                          'cancelled')),
+      -- Once the work has left our hands, a cancellation is a request and
+      -- says so: the flag is set, and only an acknowledgement ends it.
+      cancellation_requested INTEGER NOT NULL DEFAULT 0,
+      cancellation_note TEXT,
+      work_order_id INTEGER REFERENCES work_orders(id),
+      permalink TEXT,
+      failure_reason TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    -- The disclosure checklist: one row per rule the slot's platform
+    -- imposes, acknowledged by a person before the work is released.
+    CREATE TABLE IF NOT EXISTS delivery_disclosures (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_id INTEGER NOT NULL REFERENCES delivery_targets(id),
+      rule TEXT NOT NULL,
+      acknowledged_by TEXT NOT NULL,
+      acknowledged_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (target_id, rule)
+    );
+    CREATE TRIGGER IF NOT EXISTS content_releases_no_update
+    BEFORE UPDATE ON content_releases
+    BEGIN
+      SELECT RAISE(ABORT, 'a Content Release binds immutably to its export bundle');
+    END;
+    CREATE TRIGGER IF NOT EXISTS content_releases_no_delete
+    BEFORE DELETE ON content_releases
+    BEGIN
+      SELECT RAISE(ABORT, 'a Content Release binds immutably to its export bundle');
+    END;
+    CREATE TRIGGER IF NOT EXISTS delivery_disclosures_no_update
+    BEFORE UPDATE ON delivery_disclosures
+    BEGIN
+      SELECT RAISE(ABORT, 'a disclosure acknowledgement is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS delivery_disclosures_no_delete
+    BEFORE DELETE ON delivery_disclosures
+    BEGIN
+      SELECT RAISE(ABORT, 'a disclosure acknowledgement is a permanent record');
     END;
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,

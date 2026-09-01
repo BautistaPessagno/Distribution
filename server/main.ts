@@ -17,6 +17,7 @@ import { handleMcpRequest } from "./mcp";
 import { accountRouter } from "./account-routes";
 import { approvalRouter } from "./approval-routes";
 import { workOrderRouter } from "./work-order-routes";
+import { deliveryRouter } from "./delivery-routes";
 import { assetRouter } from "./asset-routes";
 import { brandKitRouter } from "./brand-kit-routes";
 import { pieceRouter } from "./piece-routes";
@@ -96,6 +97,7 @@ async function main(): Promise<void> {
   server.use("/api/approvals", approvalRouter());
   server.use("/api/slots", accountRouter());
   server.use("/api/work-orders", workOrderRouter());
+  server.use("/api/deliveries", deliveryRouter());
 
   // Dev stub Connected Project: a conformant project domain served by this
   // process so registration is testable before any real project exists.
