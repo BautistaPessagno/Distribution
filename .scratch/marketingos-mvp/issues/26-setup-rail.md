@@ -4,8 +4,8 @@
 
 **Blocked by:** 06 Connected Project registration, 19 Account Slots, Instances, and readiness.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A fresh workspace walks the three steps to a connected, slot-holding state
-- [ ] No step performs or requests a project write
-- [ ] Skipping a step is possible and visibly resumable
+- [x] A fresh workspace walks the three steps to a connected, slot-holding state
+- [x] No step performs or requests a project write
+- [x] Skipping a step is possible and visibly resumable
