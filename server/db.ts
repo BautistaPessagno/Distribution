@@ -36,7 +36,8 @@ export function getDb(): Database.Database {
 //  12  predeclared Experiments, observation points, and measure orders
 //  13  Metric Snapshots from both observation sources
 //  14  decision records and the per-project learning log
-const SCHEMA_VERSION = "14";
+//  15  setup rail step skips
+const SCHEMA_VERSION = "15";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -591,6 +592,15 @@ function migrate(d: Database.Database): void {
     BEGIN
       SELECT RAISE(ABORT, 'a decision record is permanent');
     END;
+    -- Steps of the setup rail the Operator chose to pass over. Skipping is
+    -- a real choice and a reversible one, so it is recorded rather than
+    -- inferred, and a skipped step stays on screen as skipped rather than
+    -- disappearing.
+    CREATE TABLE IF NOT EXISTS setup_skips (
+      step TEXT PRIMARY KEY,
+      skipped_by TEXT NOT NULL,
+      skipped_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id),

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApprovalInterruption, pendingOf, useApprovals } from "./approvals";
 import { PieceMoves } from "./piece-moves";
+import { SetupRailPanel, useSetupRail } from "./setup-rail";
 import { EmptyState, Shell } from "./shell";
 
 // The Today view (ticket 07's decision): what is planned, what is waiting
@@ -52,6 +53,7 @@ export default function Home() {
   const [backlog, setBacklog] = useState<TodayPiece[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const approvals = useApprovals();
+  const setup = useSetupRail();
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +91,16 @@ export default function Home() {
         {/* Above the rail, deliberately: an approval is an interruption a
             host caused, not a step you planned. */}
         <ApprovalInterruption changes={approvals.changes} onDecided={approvals.reload} />
+
+        {/* The first-run rail, above the standing picture: until setup is
+            finished there is nothing for the day's work to sit on. It
+            disappears from here once it is done. */}
+        {setup.rail && !setup.rail.complete && (
+          <>
+            <SetupRailPanel rail={setup.rail} onChanged={setup.reload} />
+            <hr className="hairline" />
+          </>
+        )}
 
         {error && <p className="error-text">{error}</p>}
 
