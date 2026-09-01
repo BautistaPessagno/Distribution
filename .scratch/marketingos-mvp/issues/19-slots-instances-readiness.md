@@ -4,8 +4,8 @@
 
 **Blocked by:** 02 Secrets store and audit trail, 04 Dashboard shell and design tokens.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A slot walks requested to ready only when all six checklist items hold evidence
-- [ ] Credentials exist only as custody references; a test proves none leak into any surface
-- [ ] Non-X default caps are visibly labeled judgment calls, per the honesty rules
+- [x] A slot walks requested to ready only when all six checklist items hold evidence
+- [x] Credentials exist only as custody references; a test proves none leak into any surface
+- [x] Non-X default caps are visibly labeled judgment calls, per the honesty rules

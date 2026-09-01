@@ -29,7 +29,8 @@ export function getDb(): Database.Database {
 //   5  Marketing Assets and the piece image handoff state
 //   6  prepared Project Change Sets
 //   7  Write Receipts and single-use approvals
-const SCHEMA_VERSION = "7";
+//   8  Account Slots, Account Instances, and readiness evidence
+const SCHEMA_VERSION = "8";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -182,6 +183,59 @@ function migrate(d: Database.Database): void {
       manifest TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
+    CREATE TABLE IF NOT EXISTS account_slots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      platform TEXT NOT NULL
+        CHECK (platform IN ('instagram', 'tiktok', 'x', 'linkedin')),
+      label TEXT NOT NULL,
+      identity_spec TEXT NOT NULL,
+      niche_keywords TEXT NOT NULL DEFAULT '[]',
+      disclosure_rules TEXT NOT NULL DEFAULT '[]',
+      risk_policy TEXT NOT NULL DEFAULT '{}',
+      daily_caps TEXT NOT NULL DEFAULT '[]',
+      allowed_windows TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'requested'
+        CHECK (status IN ('requested', 'provisioning', 'warming', 'ready',
+                          'active', 'impaired', 'replacing', 'paused', 'retired')),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TABLE IF NOT EXISTS account_instances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slot_id INTEGER NOT NULL REFERENCES account_slots(id),
+      handle TEXT NOT NULL,
+      -- A custody reference and never a credential. Nothing in this row,
+      -- or anywhere downstream of it, holds the secret itself.
+      credentials_reference TEXT,
+      health TEXT NOT NULL DEFAULT 'unverified'
+        CHECK (health IN ('unverified', 'healthy', 'impaired', 'lost')),
+      lost_reason TEXT,
+      archived INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      archived_at TEXT
+    );
+    -- Readiness is earned per instance, item by item, each with the fact
+    -- that earned it. Append-only: evidence is not something to revise.
+    CREATE TABLE IF NOT EXISTS readiness_evidence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      instance_id INTEGER NOT NULL REFERENCES account_instances(id),
+      item TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      recorded_by TEXT NOT NULL,
+      recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (instance_id, item)
+    );
+    CREATE TRIGGER IF NOT EXISTS readiness_evidence_no_update
+    BEFORE UPDATE ON readiness_evidence
+    BEGIN
+      SELECT RAISE(ABORT, 'readiness evidence is append-only');
+    END;
+    CREATE TRIGGER IF NOT EXISTS readiness_evidence_no_delete
+    BEFORE DELETE ON readiness_evidence
+    BEGIN
+      SELECT RAISE(ABORT, 'readiness evidence is append-only');
+    END;
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id),
