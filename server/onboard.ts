@@ -18,6 +18,7 @@ export const ONBOARD_GUIDE = {
     "Platform work happens through Work Orders a person claims and completes. Nothing completes without proof, and a retry is a new attempt rather than a rewrite of the last one.",
     "Daily caps, allowed windows, and a per-slot pause block the release of work rather than warning about it. A refusal names when the queue opens again. Caps govern only what MarketingOS hands to a person; the person still performs every platform action.",
     "Distribution is by hand and verifiable. A Content Release binds immutably to one export bundle by digest; a Delivery Target pairs it with one Account Instance under an idempotency key that can never create a second delivery; and nothing is verified as posted without the destination permalink.",
+    "Experiments are predeclared in full before work ships — one variable, one primary metric, the decision rule, the sample, the stop condition — and the declaration cannot be edited afterwards. Observation points schedule their own measure Work Orders when a delivery is verified posted. An ad-hoc reading is still possible and is labelled unscheduled wherever it appears.",
     "No secret material ever appears in MCP responses, method text, Work Orders, proofs, or logs.",
   ],
   tools: {
@@ -46,6 +47,8 @@ export const ONBOARD_GUIDE = {
     "marketingos.instantiate_template":
       "Start a new backlog piece from a Creative Template, bound to this session's pinned snapshot.",
     "marketingos.record_outcome": "Record what an exported piece did, moving it to measured.",
+    "marketingos.list_experiments":
+      "Read the selected project's predeclared Experiments, their observation points, and the measure orders those points scheduled. Read-only.",
     "marketingos.list_deliveries":
       "Read the selected project's Content Releases and Delivery Targets: queue position, window, disclosure checklist, state, and the destination permalink. Read-only.",
     "marketingos.list_work_orders":

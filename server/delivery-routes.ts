@@ -18,9 +18,9 @@ import {
   releaseView,
   submitDeliveryProof,
   targetView,
-  verifyPosted,
   type DeliveryTarget,
 } from "./deliveries";
+import { verifyAndObserve } from "./experiments";
 import { log } from "./log";
 import { orderView } from "./work-orders";
 
@@ -141,18 +141,31 @@ export function deliveryRouter(): Router {
     }
   });
 
-  const PLAIN_MOVES = { posting: markPosting, verify: verifyPosted } as const;
-  for (const [path, move] of Object.entries(PLAIN_MOVES)) {
-    router.post(`/:id/${path}`, (req, res) => {
-      const target = targetOr404(req, res);
-      if (!target) return;
-      try {
-        res.json({ target: targetView(move(target.id, "operator")) });
-      } catch (err) {
-        handle(res, err);
-      }
-    });
-  }
+  router.post("/:id/posting", (req, res) => {
+    const target = targetOr404(req, res);
+    if (!target) return;
+    try {
+      res.json({ target: targetView(markPosting(target.id, "operator")) });
+    } catch (err) {
+      handle(res, err);
+    }
+  });
+
+  /**
+   * Verification and the readings it earns are one act. There is no moment
+   * at which a verified delivery exists with its observation points still
+   * waiting for someone to remember them.
+   */
+  router.post("/:id/verify", (req, res) => {
+    const target = targetOr404(req, res);
+    if (!target) return;
+    try {
+      const outcome = verifyAndObserve(target.id, "operator");
+      res.json({ target: targetView(outcome.target), scheduled: outcome.scheduled });
+    } catch (err) {
+      handle(res, err);
+    }
+  });
 
   router.post("/:id/proof", (req, res) => {
     const target = targetOr404(req, res);

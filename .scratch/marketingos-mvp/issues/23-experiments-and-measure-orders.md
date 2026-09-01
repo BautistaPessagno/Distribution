@@ -4,8 +4,8 @@
 
 **Blocked by:** 22 Distribution deliveries.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] An experiment cannot be created without its full predeclaration
-- [ ] Observation points generate measure orders at the right moments without manual scheduling
-- [ ] Unscheduled snapshots are visibly distinct from scheduled ones
+- [x] An experiment cannot be created without its full predeclaration
+- [x] Observation points generate measure orders at the right moments without manual scheduling
+- [x] Unscheduled snapshots are visibly distinct from scheduled ones

@@ -81,6 +81,12 @@ export interface WorkOrder {
   readinessItem: ReadinessItem | null;
   /** The platform action a daily cap counts this order against, if any. */
   cappedAction: string | null;
+  /**
+   * The observation point that scheduled this measure order. Null means
+   * nobody scheduled it — an ad-hoc reading, which is a different thing
+   * from a planned one and says so on every surface.
+   */
+  observationId: number | null;
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
@@ -132,6 +138,7 @@ interface OrderRow {
   proof_requirement: string;
   readiness_item: ReadinessItem | null;
   capped_action: string | null;
+  observation_id: number | null;
   status: OrderStatus;
   created_at: string;
   updated_at: string;
@@ -150,6 +157,7 @@ function rowToOrder(row: OrderRow): WorkOrder {
     proofRequirement: row.proof_requirement,
     readinessItem: row.readiness_item,
     cappedAction: row.capped_action,
+    observationId: row.observation_id,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -299,6 +307,8 @@ export const createOrderSchema = z.object({
    * because "warm up the account" covers a follow and a like alike.
    */
   cappedAction: z.string().min(1).max(40).optional(),
+  /** Set only by the scheduler; an order nobody scheduled leaves it unset. */
+  observationId: z.number().int().optional(),
 });
 
 /** What a kind counts against when nobody said. */
@@ -353,8 +363,8 @@ export function createOrder(input: unknown, actor = "operator"): WorkOrder {
     .prepare(
       `INSERT INTO work_orders
         (project_id, slot_id, instance_id, piece_id, kind, title, instruction,
-         proof_requirement, readiness_item, capped_action)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         proof_requirement, readiness_item, capped_action, observation_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       spec.projectId,
@@ -366,7 +376,8 @@ export function createOrder(input: unknown, actor = "operator"): WorkOrder {
       spec.instruction,
       spec.proofRequirement ?? KIND_PROOF[spec.kind],
       spec.readinessItem ?? null,
-      spec.cappedAction ?? DEFAULT_CAPPED_ACTION[spec.kind] ?? null
+      spec.cappedAction ?? DEFAULT_CAPPED_ACTION[spec.kind] ?? null,
+      spec.observationId ?? null
     );
 
   const order = getOrderById(Number(info.lastInsertRowid));
@@ -831,6 +842,15 @@ export function orderView(order: WorkOrder): Record<string, unknown> {
     attempts,
     attemptCount: attempts.length,
     cappedAction: order.cappedAction,
+    observationId: order.observationId,
+    // Said on the order itself: a reading nobody planned is not a planned
+    // reading, and the difference matters to anyone reading the numbers.
+    scheduling:
+      order.kind === "measure"
+        ? order.observationId === null
+          ? "unscheduled"
+          : "scheduled"
+        : null,
     // Visible before anyone tries: why the queue is shut for this order, and
     // when it opens again.
     release: TERMINAL_STATUSES.includes(order.status) ? null : releaseGate(order),
