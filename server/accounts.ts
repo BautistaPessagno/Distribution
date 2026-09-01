@@ -281,6 +281,30 @@ export const createSlotSchema = z.object({
 });
 
 /**
+ * Fold the Operator's numbers into the shipped caps. Every action the
+ * platform policy caps stays capped; an override changes a number, and an
+ * action the defaults never mentioned is added. Nothing here is ever a
+ * platform-sanctioned volume.
+ */
+function mergeCaps(
+  defaults: DailyCap[],
+  overrides: { action: string; perDay: number }[] | undefined
+): DailyCap[] {
+  if (!overrides || overrides.length === 0) return defaults;
+  const byAction = new Map<string, DailyCap>(defaults.map((cap) => [cap.action, { ...cap }]));
+  for (const override of overrides) {
+    const shipped = byAction.get(override.action);
+    byAction.set(override.action, {
+      action: override.action,
+      perDay: override.perDay,
+      basis: "judgment_call",
+      platformAnchor: shipped?.platformAnchor ?? null,
+    });
+  }
+  return [...byAction.values()];
+}
+
+/**
  * Create an Account Slot. The platform's own identity rule is enforced
  * here, before anything exists: a LinkedIn slot must be a Page, because
  * LinkedIn allows exactly one real-name member profile per person and a
@@ -302,18 +326,10 @@ export function createSlot(input: unknown, actor = "operator"): AccountSlot {
   if (refusal) throw new AccountError(409, refusal);
 
   // A cap the Operator sets is still a judgment call; overriding a number
-  // does not turn it into a platform fact.
-  const caps: DailyCap[] = spec.dailyCaps
-    ? spec.dailyCaps.map((override) => {
-        const shipped = policy.defaultCaps.find((c) => c.action === override.action);
-        return {
-          action: override.action,
-          perDay: override.perDay,
-          basis: "judgment_call",
-          platformAnchor: shipped?.platformAnchor ?? null,
-        };
-      })
-    : policy.defaultCaps;
+  // does not turn it into a platform fact. Overrides are merged onto the
+  // shipped defaults rather than replacing the list, because naming one
+  // action must never leave the other actions uncapped.
+  const caps: DailyCap[] = mergeCaps(policy.defaultCaps, spec.dailyCaps);
 
   const info = getDb()
     .prepare(
@@ -343,6 +359,23 @@ export function createSlot(input: unknown, actor = "operator"): AccountSlot {
     identityKind: slot.identitySpec.kind,
   });
   return slot;
+}
+
+/**
+ * A paused slot is the kill switch held down, and a retired slot is over.
+ * Neither is a state a lifecycle move may walk out of sideways: resuming is
+ * the only way back from paused, and nothing comes back from retired.
+ */
+function refuseIfHalted(slot: AccountSlot, doing: string): void {
+  if (slot.status === "paused") {
+    throw new AccountError(
+      409,
+      `Account Slot #${slot.id} is paused. Resume it before ${doing}.`
+    );
+  }
+  if (slot.status === "retired") {
+    throw new AccountError(409, `Account Slot #${slot.id} is retired, so ${doing} does nothing.`);
+  }
 }
 
 function setSlotStatus(slotId: number, status: SlotStatus, actor: string, why: string): AccountSlot {
@@ -383,6 +416,7 @@ export function addInstance(input: unknown, actor = "operator"): AccountInstance
 
   const slot = getSlotById(slotId);
   if (!slot) throw new AccountError(404, `No Account Slot #${slotId}`);
+  refuseIfHalted(slot, "filling it");
   if (currentInstance(slotId)) {
     throw new AccountError(
       409,
@@ -476,6 +510,7 @@ export interface ReadinessOutcome {
 export function markReady(slotId: number, actor = "operator"): ReadinessOutcome {
   const slot = getSlotById(slotId);
   if (!slot) throw new AccountError(404, `No Account Slot #${slotId}`);
+  refuseIfHalted(slot, "walking it to ready");
 
   const instance = currentInstance(slotId);
   if (!instance) {
@@ -523,7 +558,15 @@ export function markInstanceLost(
     )
     .run(reason.trim(), instanceId);
 
-  const slot = setSlotStatus(instance.slotId, "replacing", actor, `instance #${instanceId} lost`);
+  // Losing an account is a fact, not an Operator move, so it is always
+  // recorded — but it must not lift a kill switch or revive a retired slot.
+  // Those slots stay where they are and keep the loss on the record.
+  const owner = getSlotById(instance.slotId);
+  if (!owner) throw new AccountError(404, `No Account Slot #${instance.slotId}`);
+  const slot =
+    owner.status === "paused" || owner.status === "retired"
+      ? owner
+      : setSlotStatus(instance.slotId, "replacing", actor, `instance #${instanceId} lost`);
   audit(actor, "instances.lost", { instanceId, slotId: instance.slotId, reason: reason.trim() });
 
   const archived = getInstanceById(instanceId);
@@ -543,8 +586,15 @@ export function resumeSlot(slotId: number, actor = "operator"): AccountSlot {
   if (!slot) throw new AccountError(404, `No Account Slot #${slotId}`);
   if (slot.status !== "paused") throw new AccountError(409, `Account Slot #${slotId} is not paused`);
   const instance = currentInstance(slotId);
-  const restored =
-    instance && outstandingReadiness(instance.id).length === 0 ? "ready" : "warming";
+  const restored: SlotStatus = instance
+    ? outstandingReadiness(instance.id).length === 0
+      ? "ready"
+      : "warming"
+    : // No instance in place: a slot that never held one is still merely
+      // requested, and one whose instance was lost still needs a replacement.
+      listInstances(slotId).length === 0
+      ? "requested"
+      : "replacing";
   return setSlotStatus(slotId, restored, actor, "resumed by the Operator");
 }
 

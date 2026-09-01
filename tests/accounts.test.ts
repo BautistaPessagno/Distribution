@@ -26,6 +26,7 @@ import {
   addInstance,
   createSlot,
   currentInstance,
+  getInstanceById,
   getSlotById,
   instanceView,
   listSlots,
@@ -272,6 +273,65 @@ test("the kill switch pauses a slot, and resuming restores what it had earned", 
   assert.equal(resumeSlot(unready.id).status, "warming");
 });
 
+test("a paused slot cannot be walked to ready, filled, or revived by a loss", () => {
+  const created = slot({ label: "Kill switch holds" });
+  const instance = addInstance({ slotId: created.id, handle: "@held" });
+  evidenceAll(instance.id);
+  pauseSlot(created.id);
+
+  // The route to ready is shut while the kill switch is down, so the route
+  // to active — which only a ready slot takes — is shut with it.
+  assert.throws(() => markReady(created.id), /paused/);
+  assert.equal(getSlotById(created.id)?.status, "paused");
+  assert.throws(() => activateSlot(created.id), /Only a ready slot/);
+
+  // Losing the instance is still recorded, but it does not lift the pause.
+  markInstanceLost(instance.id, "suspended while paused");
+  assert.equal(getSlotById(created.id)?.status, "paused");
+  assert.equal(currentInstance(created.id), null);
+
+  // Nor can the slot be refilled behind the kill switch.
+  assert.throws(() => addInstance({ slotId: created.id, handle: "@sneaky" }), /paused/);
+
+  // Resuming a slot whose instance was lost lands on replacing, and the
+  // replacement earns readiness from nothing.
+  assert.equal(resumeSlot(created.id).status, "replacing");
+  const replacement = addInstance({ slotId: created.id, handle: "@replacement" });
+  assert.equal(outstandingReadiness(replacement.id).length, READINESS_ITEMS.length);
+});
+
+test("a slot paused before it was ever filled resumes to requested", () => {
+  const created = slot({ label: "Paused empty" });
+  pauseSlot(created.id);
+  assert.equal(resumeSlot(created.id).status, "requested");
+});
+
+test("an instance from another slot is refused by the slot's own routes", async () => {
+  const mine = slot({ label: "Mine" });
+  const theirs = slot({ label: "Theirs" });
+  const other = addInstance({ slotId: theirs.id, handle: "@theirs" });
+
+  const readiness = await api<{ error: string }>(`/api/slots/${mine.id}/readiness`, {
+    method: "POST",
+    body: JSON.stringify({
+      instanceId: other.id,
+      item: "operator_sign_off",
+      evidence: "not mine to sign",
+    }),
+  });
+  assert.equal(readiness.status, 409);
+  assert.match(readiness.body.error, /does not belong/);
+  // The evidence never landed: the other slot's instance is untouched.
+  assert.equal(outstandingReadiness(other.id).length, READINESS_ITEMS.length);
+
+  const lost = await api<{ error: string }>(`/api/slots/${mine.id}/lost`, {
+    method: "POST",
+    body: JSON.stringify({ instanceId: other.id, reason: "not mine to lose" }),
+  });
+  assert.equal(lost.status, 409);
+  assert.equal(getInstanceById(other.id)?.archived, false);
+});
+
 // ---------------------------------------------------------------------------
 // Criterion 2: credentials exist only as custody references
 
@@ -391,9 +451,32 @@ test("an Operator's own cap is still a judgment call, not a platform fact", () =
     platform: "instagram",
     dailyCaps: [{ action: "follow", perDay: 3 }],
   });
-  assert.deepEqual(getSlotById(created.id)?.dailyCaps, [
-    { action: "follow", perDay: 3, basis: "judgment_call", platformAnchor: null },
-  ]);
+  const caps = getSlotById(created.id)?.dailyCaps ?? [];
+  assert.deepEqual(caps.find((c) => c.action === "follow"), {
+    action: "follow",
+    perDay: 3,
+    basis: "judgment_call",
+    platformAnchor: null,
+  });
+  // Naming one action must not leave the others uncapped: the shipped caps
+  // for every other action survive the override.
+  assert.deepEqual(
+    caps.map((c) => c.action).sort(),
+    ["comment", "follow", "like", "post"]
+  );
+});
+
+test("an override keeps the platform anchor of the cap it replaces", () => {
+  const created = slot({
+    label: "Anchored override",
+    platform: "x",
+    identitySpec: { kind: "business_account", displayName: "Anchored" },
+    dailyCaps: [{ action: "follow", perDay: 2 }],
+  });
+  const follow = getSlotById(created.id)?.dailyCaps.find((c) => c.action === "follow");
+  assert.equal(follow?.perDay, 2);
+  assert.equal(follow?.basis, "judgment_call");
+  assert.equal(follow?.platformAnchor?.value, 400);
 });
 
 // ---------------------------------------------------------------------------

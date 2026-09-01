@@ -4,6 +4,7 @@ import {
   activateSlot,
   addInstance,
   createSlot,
+  getInstanceById,
   getSlotById,
   instanceView,
   listInstances,
@@ -118,9 +119,26 @@ export function accountRouter(): Router {
     }
   });
 
+  /**
+   * The instance named in the body must be the one this slot holds. Without
+   * the check the path would be a lie: evidence would land on another
+   * slot's instance while the response reported this slot.
+   */
+  function instanceInSlotOr409(slotId: number, instanceId: unknown, res: Response): boolean {
+    const instance = Number.isInteger(instanceId) ? getInstanceById(Number(instanceId)) : null;
+    if (!instance || instance.slotId !== slotId) {
+      res.status(409).json({
+        error: `Account Instance #${String(instanceId)} does not belong to Account Slot #${slotId}`,
+      });
+      return false;
+    }
+    return true;
+  }
+
   router.post("/:id/readiness", (req, res) => {
     const slot = slotOr404(req, res);
     if (!slot) return;
+    if (!instanceInSlotOr409(slot.id, req.body?.instanceId, res)) return;
     try {
       const checklist = recordReadiness(req.body, "operator");
       res.json({ checklist, slot: slotView(getSlotById(slot.id)!) });
@@ -153,6 +171,7 @@ export function accountRouter(): Router {
   router.post("/:id/lost", (req, res) => {
     const slot = slotOr404(req, res);
     if (!slot) return;
+    if (!instanceInSlotOr409(slot.id, req.body?.instanceId, res)) return;
     try {
       const instanceId = Number(req.body?.instanceId);
       const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
