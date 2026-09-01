@@ -33,7 +33,8 @@ export function getDb(): Database.Database {
 //   9  Work Orders, their attempts, proofs, reviews, and transitions
 //  10  the capped action a Work Order hands out, and instance replacement
 //  11  Content Releases, Delivery Targets, and the disclosure checklist
-const SCHEMA_VERSION = "11";
+//  12  predeclared Experiments, observation points, and measure orders
+const SCHEMA_VERSION = "12";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -259,6 +260,10 @@ function migrate(d: Database.Database): void {
       proof_requirement TEXT NOT NULL,
       -- The readiness checklist item this order earns, when it earns one.
       readiness_item TEXT,
+      -- The observation point that scheduled this measure order, when one
+      -- did. Null means nobody scheduled it: an ad-hoc reading, which every
+      -- surface says out loud rather than letting it pass for planned work.
+      observation_id INTEGER REFERENCES experiment_observations(id),
       -- The platform action this order hands out, when it hands one out.
       -- This is what a daily cap counts; an order with no capped action
       -- (provisioning, measuring) is not platform volume and is not counted.
@@ -424,6 +429,85 @@ function migrate(d: Database.Database): void {
     BEGIN
       SELECT RAISE(ABORT, 'a disclosure acknowledgement is a permanent record');
     END;
+    -- An Experiment is predeclared: one variable, one primary metric, the
+    -- decision rule, the sample target, and the stop condition, all fixed
+    -- before any work ships. The trigger below is what makes "predeclared"
+    -- mean something — the declaration cannot be edited afterwards, only
+    -- the status moves.
+    CREATE TABLE IF NOT EXISTS experiments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      name TEXT NOT NULL,
+      variable TEXT NOT NULL,
+      primary_metric TEXT NOT NULL,
+      decision_rule TEXT NOT NULL,
+      sample_target INTEGER NOT NULL,
+      stop_condition TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'predeclared'
+        CHECK (status IN ('predeclared', 'running', 'stopped', 'concluded')),
+      declared_by TEXT NOT NULL DEFAULT 'operator',
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TRIGGER IF NOT EXISTS experiments_declaration_is_fixed
+    BEFORE UPDATE ON experiments
+    WHEN old.variable <> new.variable
+      OR old.primary_metric <> new.primary_metric
+      OR old.decision_rule <> new.decision_rule
+      OR old.sample_target <> new.sample_target
+      OR old.stop_condition <> new.stop_condition
+      OR old.project_id <> new.project_id
+    BEGIN
+      SELECT RAISE(ABORT, 'an Experiment is predeclared; its declaration cannot be edited');
+    END;
+    CREATE TRIGGER IF NOT EXISTS experiments_no_delete
+    BEFORE DELETE ON experiments
+    BEGIN
+      SELECT RAISE(ABORT, 'an Experiment is a permanent record');
+    END;
+    -- When to look, at what, and where to read it. Declared with the
+    -- experiment, so nobody decides after the fact which moment counted.
+    CREATE TABLE IF NOT EXISTS experiment_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      experiment_id INTEGER NOT NULL REFERENCES experiments(id),
+      position INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      after_hours INTEGER NOT NULL,
+      metrics TEXT NOT NULL,
+      source TEXT NOT NULL,
+      UNIQUE (experiment_id, position)
+    );
+    CREATE TRIGGER IF NOT EXISTS experiment_observations_no_update
+    BEFORE UPDATE ON experiment_observations
+    BEGIN
+      SELECT RAISE(ABORT, 'an observation point is declared with its experiment');
+    END;
+    CREATE TRIGGER IF NOT EXISTS experiment_observations_no_delete
+    BEFORE DELETE ON experiment_observations
+    BEGIN
+      SELECT RAISE(ABORT, 'an observation point is declared with its experiment');
+    END;
+    -- Which deliveries this experiment is watching.
+    CREATE TABLE IF NOT EXISTS experiment_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      experiment_id INTEGER NOT NULL REFERENCES experiments(id),
+      target_id INTEGER NOT NULL REFERENCES delivery_targets(id),
+      enrolled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (experiment_id, target_id)
+    );
+    -- One measure Work Order per observation point per delivery. The unique
+    -- index is why scheduling can run again without ever double-booking a
+    -- person for the same reading.
+    CREATE TABLE IF NOT EXISTS observation_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      experiment_id INTEGER NOT NULL REFERENCES experiments(id),
+      observation_id INTEGER NOT NULL REFERENCES experiment_observations(id),
+      target_id INTEGER NOT NULL REFERENCES delivery_targets(id),
+      order_id INTEGER NOT NULL REFERENCES work_orders(id),
+      due_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (observation_id, target_id)
+    );
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -540,6 +624,12 @@ function migrate(d: Database.Database): void {
   addColumn(d, "pieces", "image_state", "TEXT");
   addColumn(d, "pieces", "image_prompt", "TEXT");
   addColumn(d, "work_orders", "capped_action", "TEXT");
+  addColumn(
+    d,
+    "work_orders",
+    "observation_id",
+    "INTEGER REFERENCES experiment_observations(id)"
+  );
   addColumn(
     d,
     "account_instances",

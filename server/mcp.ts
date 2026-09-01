@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { listSlots, slotView } from "./accounts";
 import { listOrders, orderView } from "./work-orders";
 import { listReleases, listTargets, releaseView, targetView } from "./deliveries";
+import { experimentView, listExperiments } from "./experiments";
 import { currentKit } from "./brand-kit";
 import { checkBrand, checkQuality } from "./checks";
 import {
@@ -290,6 +291,22 @@ function buildServer(sessionKey: string): McpServer {
         targets: releases.flatMap((release) =>
           listTargets({ releaseId: release.id }).map(targetView)
         ),
+      });
+    }
+  );
+  server.registerTool(
+    "marketingos.list_experiments",
+    {
+      description:
+        "List the selected Connected Project's predeclared Experiments: the one variable, the primary metric, the decision rule, the sample target, the stop condition, the observation points, and the measure Work Orders those points scheduled. Read-only. The declaration was fixed before any work shipped and cannot be edited, so a result is never explained by a rule that moved.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        experiments: listExperiments(pinned.projectId).map(experimentView),
       });
     }
   );
