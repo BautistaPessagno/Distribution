@@ -33,7 +33,6 @@ import {
 } from "../server/deliveries";
 import { deliveryRouter } from "../server/delivery-routes";
 import {
-  concludeExperiment,
   declareExperiment,
   enrollDelivery,
   experimentView,
@@ -337,17 +336,19 @@ test("the sweep catches a verified delivery whose readings were never scheduled"
   assert.equal(swept.filter((s) => s.targetId === delivery.targetId).length, 2);
 });
 
-test("enrolment starts the experiment, and a concluded one takes nothing on", () => {
+test("enrolment starts the experiment, and a halted one takes nothing on", () => {
   const declared = experiment({ name: "Lifecycle" });
   assert.equal(declared.status, "predeclared");
   const delivery = deliveryAtProof();
   assert.equal(enrollDelivery(declared.id, delivery.targetId).experiment.status, "running");
 
-  concludeExperiment(declared.id);
+  // Reaching `concluded` goes through the decision record of ticket 25 and
+  // is covered there; stopping is the other way an experiment closes.
+  stopExperiment(declared.id);
   const another = deliveryAtProof();
   assert.throws(
     () => enrollDelivery(declared.id, another.targetId),
-    /is concluded and takes on no further deliveries/
+    /is stopped and takes on no further deliveries/
   );
 });
 

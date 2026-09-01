@@ -35,7 +35,8 @@ export function getDb(): Database.Database {
 //  11  Content Releases, Delivery Targets, and the disclosure checklist
 //  12  predeclared Experiments, observation points, and measure orders
 //  13  Metric Snapshots from both observation sources
-const SCHEMA_VERSION = "13";
+//  14  decision records and the per-project learning log
+const SCHEMA_VERSION = "14";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -552,6 +553,44 @@ function migrate(d: Database.Database): void {
     END;
     CREATE INDEX IF NOT EXISTS metric_snapshots_by_target
       ON metric_snapshots (target_id, metric, observed_at);
+    -- The typed decision an experiment concluded with, and the assessment
+    -- of what its evidence can and cannot carry. One per experiment, and
+    -- permanent: a conclusion that could be rewritten after the next
+    -- campaign would not be a record of what was believed at the time.
+    CREATE TABLE IF NOT EXISTS decision_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      experiment_id INTEGER NOT NULL UNIQUE REFERENCES experiments(id),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      decision TEXT NOT NULL CHECK (decision IN ('repeat', 'change', 'stop')),
+      -- What the evidence can support, and — said just as explicitly —
+      -- what it cannot.
+      supports TEXT NOT NULL,
+      does_not_support TEXT NOT NULL,
+      ladder_rung TEXT NOT NULL
+        CHECK (ladder_rung IN ('controlled_experiment', 'within_account_comparison',
+                               'pre_post_observation', 'correlated_observation',
+                               'anecdote')),
+      cheapest_next_observation TEXT NOT NULL,
+      -- How the predeclared stop condition was met, in the Operator's words.
+      stop_condition_met TEXT NOT NULL,
+      sample_at_conclusion INTEGER NOT NULL,
+      sample_target INTEGER NOT NULL,
+      -- Funnel movements observed alongside, carried as correlations and
+      -- never as the reason for the decision.
+      correlated_observations TEXT NOT NULL DEFAULT '[]',
+      decided_by TEXT NOT NULL,
+      decided_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TRIGGER IF NOT EXISTS decision_records_no_update
+    BEFORE UPDATE ON decision_records
+    BEGIN
+      SELECT RAISE(ABORT, 'a decision record is what was believed at the time; it is not revised');
+    END;
+    CREATE TRIGGER IF NOT EXISTS decision_records_no_delete
+    BEFORE DELETE ON decision_records
+    BEGIN
+      SELECT RAISE(ABORT, 'a decision record is permanent');
+    END;
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id),

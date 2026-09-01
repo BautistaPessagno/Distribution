@@ -1,5 +1,6 @@
 "use client";
 
+import { LearningEntryCard, useLearningLog } from "../decisions";
 import { ExperimentCard, useExperiments } from "../experiments";
 import { EmptyState, Shell } from "../shell";
 import { FunnelRead, SnapshotTable, useSnapshots } from "../snapshots";
@@ -11,6 +12,10 @@ import { FunnelRead, SnapshotTable, useSnapshots } from "../snapshots";
 export default function LearningPage() {
   const experiments = useExperiments();
   const snapshots = useSnapshots();
+  // The log is per project; the experiments board already knows which
+  // projects have any, so the first one is the one to show.
+  const projectId = experiments.experiments?.[0]?.projectId ?? null;
+  const learning = useLearningLog(projectId);
 
   return (
     <Shell>
@@ -43,6 +48,28 @@ export default function LearningPage() {
             ))}
           </ul>
         )}
+        <hr className="hairline" />
+        <h2 className="headline" style={{ fontSize: "1.1rem" }}>
+          Learning log
+        </h2>
+        <p className="body-text">
+          Every concluded experiment, with what its evidence supports, what it does not, and
+          the rung that evidence reaches. Funnel movements sit beside a decision and never
+          underneath it: a correlation may justify the next test and is never proof of what
+          caused it.
+        </p>
+        {learning.error && <p className="error-text">{learning.error}</p>}
+        {learning.log !== null && learning.log.entries.length === 0 && (
+          <p className="body-text">Nothing concluded yet.</p>
+        )}
+        {learning.log !== null && learning.log.entries.length > 0 && (
+          <ul className="connection-list">
+            {learning.log.entries.map((entry) => (
+              <LearningEntryCard key={entry.experimentId} entry={entry} />
+            ))}
+          </ul>
+        )}
+
         <hr className="hairline" />
         <h2 className="headline" style={{ fontSize: "1.1rem" }}>
           Metric Snapshots

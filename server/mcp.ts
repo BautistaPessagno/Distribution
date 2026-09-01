@@ -8,6 +8,7 @@ import { listOrders, orderView } from "./work-orders";
 import { listReleases, listTargets, releaseView, targetView } from "./deliveries";
 import { experimentView, listExperiments } from "./experiments";
 import { listSnapshots, snapshotView } from "./snapshots";
+import { learningLogView } from "./decisions";
 import { currentKit } from "./brand-kit";
 import { checkBrand, checkQuality } from "./checks";
 import {
@@ -324,6 +325,22 @@ function buildServer(sessionKey: string): McpServer {
       return lintedJson({
         context: sessionContext(sessionKey),
         snapshots: listSnapshots({ projectId: pinned.projectId }).map(snapshotView),
+      });
+    }
+  );
+  server.registerTool(
+    "marketingos.get_learning_log",
+    {
+      description:
+        "Read the selected Connected Project's learning log: every concluded experiment with its typed decision (repeat, change, stop), what the evidence supports, what it explicitly does not support, its rung on the evidence ladder and what that rung means, the cheapest next observation, and the sample it was decided on. Funnel movements are listed as correlated observations beside each decision and never underneath it — a correlation may justify the next test and is never proof. Start a Creative Brief from this rather than reasoning from scratch, and never quote a conclusion without the rung it carries.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        learningLog: learningLogView(pinned.projectId),
       });
     }
   );

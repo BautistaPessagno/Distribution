@@ -19,6 +19,7 @@ export interface ObservationPoint {
 
 export interface Experiment {
   id: number;
+  projectId: number;
   name: string;
   declaration: {
     variable: string;
