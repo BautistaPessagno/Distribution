@@ -4,7 +4,7 @@
 
 **Blocked by:** 20 Work Orders and the proof cycle.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] The cap blocks the next release with next-window messaging; nothing merely warns
 - [ ] The kill switch stops releases immediately and visibly
