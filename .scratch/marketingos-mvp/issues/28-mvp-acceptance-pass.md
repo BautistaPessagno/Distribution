@@ -4,9 +4,9 @@
 
 **Blocked by:** 15 Creative Templates, 16 Image handoff, 22 Distribution deliveries, 25 Decision records and the learning log, 26 Setup onboarding rail, 27 Daily guided rail.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Every gate on the list fired at least once during a genuine loop, with evidence linked
-- [ ] The conformance suite passes for the registered project domain
-- [ ] A code audit finds no project-specific identity, vocabulary, or assets
-- [ ] Week-four habit check is scheduled with the Operator
+- [x] Every gate on the list fired at least once during a genuine loop, with evidence linked
+- [x] The conformance suite passes for the registered project domain
+- [x] A code audit finds no project-specific identity, vocabulary, or assets
+- [x] Week-four habit check is scheduled with the Operator

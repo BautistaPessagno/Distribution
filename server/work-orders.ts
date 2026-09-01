@@ -773,8 +773,8 @@ export function orderCard(order: WorkOrder): OrderCard {
 }
 
 function lowerFirst(text: string): string {
-  // Only when the first word is not already a name or a handle, so
-  // "@keepanalog" and "TikTok" survive being folded into a sentence.
+  // Only when the first word is not already a name or a handle, so a
+  // handle and a proper noun both survive being folded into a sentence.
   return /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
 }
 
