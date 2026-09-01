@@ -4,8 +4,8 @@
 
 **Blocked by:** 19 Account Slots, Instances, and readiness.
 
-**Status:** in-progress
+**Status:** done
 
-- [ ] No Work Order completes without proof; retries create new attempts, never rewrites
-- [ ] Every transition is audited with actor and timestamp
-- [ ] A warm-up order renders as one plain instruction plus a proof field
+- [x] No Work Order completes without proof; retries create new attempts, never rewrites
+- [x] Every transition is audited with actor and timestamp
+- [x] A warm-up order renders as one plain instruction plus a proof field

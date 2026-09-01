@@ -30,7 +30,8 @@ export function getDb(): Database.Database {
 //   6  prepared Project Change Sets
 //   7  Write Receipts and single-use approvals
 //   8  Account Slots, Account Instances, and readiness evidence
-const SCHEMA_VERSION = "8";
+//   9  Work Orders, their attempts, proofs, reviews, and transitions
+const SCHEMA_VERSION = "9";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -235,6 +236,108 @@ function migrate(d: Database.Database): void {
     BEFORE DELETE ON readiness_evidence
     BEGIN
       SELECT RAISE(ABORT, 'readiness evidence is append-only');
+    END;
+    -- Work Orders: the human-work lifecycle, kept whole even with one
+    -- Operator. MarketingOS never performs a platform action; an order is
+    -- an instruction to a person and a place to put what came back.
+    CREATE TABLE IF NOT EXISTS work_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      slot_id INTEGER REFERENCES account_slots(id),
+      instance_id INTEGER REFERENCES account_instances(id),
+      piece_id INTEGER REFERENCES pieces(id),
+      kind TEXT NOT NULL
+        CHECK (kind IN ('provision', 'warmup', 'post', 'comment', 'measure', 'replace')),
+      title TEXT NOT NULL,
+      instruction TEXT NOT NULL,
+      proof_requirement TEXT NOT NULL,
+      -- The readiness checklist item this order earns, when it earns one.
+      readiness_item TEXT,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'awaiting_brand_approval', 'queued', 'claimed',
+                          'in_progress', 'proof_submitted', 'under_review',
+                          'changes_requested', 'completed', 'cancelled', 'failed')),
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    -- One attempt is one claim-to-review pass. A retry is the next attempt,
+    -- never an edit of the last one, so all three of these tables are
+    -- insert-only and the triggers below are what make that true rather
+    -- than a convention the next writer can forget.
+    CREATE TABLE IF NOT EXISTS work_order_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES work_orders(id),
+      attempt_no INTEGER NOT NULL,
+      claimed_by TEXT NOT NULL,
+      claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (order_id, attempt_no)
+    );
+    CREATE TABLE IF NOT EXISTS work_order_proofs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      attempt_id INTEGER NOT NULL REFERENCES work_order_attempts(id),
+      body TEXT NOT NULL,
+      submitted_by TEXT NOT NULL,
+      submitted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TABLE IF NOT EXISTS work_order_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      attempt_id INTEGER NOT NULL REFERENCES work_order_attempts(id),
+      decision TEXT NOT NULL CHECK (decision IN ('accepted', 'changes_requested', 'failed')),
+      note TEXT NOT NULL DEFAULT '',
+      reviewed_by TEXT NOT NULL,
+      reviewed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    -- Every transition, with its actor and its timestamp. The audit log
+    -- carries the same fact; this table is what the order's own history
+    -- renders from.
+    CREATE TABLE IF NOT EXISTS work_order_transitions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES work_orders(id),
+      from_status TEXT NOT NULL,
+      to_status TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TRIGGER IF NOT EXISTS work_order_attempts_no_update
+    BEFORE UPDATE ON work_order_attempts
+    BEGIN
+      SELECT RAISE(ABORT, 'a Work Order attempt is a permanent record; a retry is a new attempt');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_attempts_no_delete
+    BEFORE DELETE ON work_order_attempts
+    BEGIN
+      SELECT RAISE(ABORT, 'a Work Order attempt is a permanent record; a retry is a new attempt');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_proofs_no_update
+    BEFORE UPDATE ON work_order_proofs
+    BEGIN
+      SELECT RAISE(ABORT, 'proof is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_proofs_no_delete
+    BEFORE DELETE ON work_order_proofs
+    BEGIN
+      SELECT RAISE(ABORT, 'proof is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_reviews_no_update
+    BEFORE UPDATE ON work_order_reviews
+    BEGIN
+      SELECT RAISE(ABORT, 'a review is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_reviews_no_delete
+    BEFORE DELETE ON work_order_reviews
+    BEGIN
+      SELECT RAISE(ABORT, 'a review is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_transitions_no_update
+    BEFORE UPDATE ON work_order_transitions
+    BEGIN
+      SELECT RAISE(ABORT, 'a transition is a permanent record');
+    END;
+    CREATE TRIGGER IF NOT EXISTS work_order_transitions_no_delete
+    BEFORE DELETE ON work_order_transitions
+    BEGIN
+      SELECT RAISE(ABORT, 'a transition is a permanent record');
     END;
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,

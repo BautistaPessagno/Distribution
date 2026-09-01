@@ -4,6 +4,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { listSlots, slotView } from "./accounts";
+import { listOrders, orderView } from "./work-orders";
 import { currentKit } from "./brand-kit";
 import { checkBrand, checkQuality } from "./checks";
 import {
@@ -252,6 +253,22 @@ function buildServer(sessionKey: string): McpServer {
       return lintedJson({
         context: sessionContext(sessionKey),
         slots: listSlots(pinned.projectId).map(slotView),
+      });
+    }
+  );
+  server.registerTool(
+    "marketingos.list_work_orders",
+    {
+      description:
+        "List the Work Orders of the selected Connected Project: kind, lifecycle state, the one-instruction card a person works from, every attempt with its proof and review, and the full transition history. Read-only. Claiming, doing, and reviewing work are the Operator's acts; MarketingOS never performs a platform action.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        orders: listOrders({ projectId: pinned.projectId }).map(orderView),
       });
     }
   );

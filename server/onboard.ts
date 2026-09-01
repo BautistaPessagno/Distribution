@@ -15,6 +15,7 @@ export const ONBOARD_GUIDE = {
     "Approved-claims-only citation. [NEED] tokens block approval. Heuristic scores self-label.",
     "MarketingOS never generates images. Every asset records its origin, prompt lineage, and rights notes, or it is refused.",
     "MarketingOS never creates a platform account and never performs a platform action. Account readiness is an explicit evidenced checklist, never elapsed time, and daily caps are our judgment calls rather than platform-sanctioned volumes.",
+    "Platform work happens through Work Orders a person claims and completes. Nothing completes without proof, and a retry is a new attempt rather than a rewrite of the last one.",
     "No secret material ever appears in MCP responses, method text, Work Orders, proofs, or logs.",
   ],
   tools: {
@@ -43,6 +44,8 @@ export const ONBOARD_GUIDE = {
     "marketingos.instantiate_template":
       "Start a new backlog piece from a Creative Template, bound to this session's pinned snapshot.",
     "marketingos.record_outcome": "Record what an exported piece did, moving it to measured.",
+    "marketingos.list_work_orders":
+      "Read the selected project's Work Orders: state, the one-instruction card, every attempt with its proof and review, and the transition history. Read-only.",
     "marketingos.list_account_slots":
       "Read the selected project's Account Slots, their caps and windows, and the readiness checklist of the instance in each. Read-only: MarketingOS never creates an identity or performs a platform action.",
     "marketingos.get_brand_kit":
