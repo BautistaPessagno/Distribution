@@ -2,6 +2,7 @@
 
 import { ExperimentCard, useExperiments } from "../experiments";
 import { EmptyState, Shell } from "../shell";
+import { FunnelRead, SnapshotTable, useSnapshots } from "../snapshots";
 
 // Learning. For now this is the experiments board: what was declared, when
 // it was declared, and the readings it asked for in advance. Metric
@@ -9,6 +10,7 @@ import { EmptyState, Shell } from "../shell";
 
 export default function LearningPage() {
   const experiments = useExperiments();
+  const snapshots = useSnapshots();
 
   return (
     <Shell>
@@ -40,6 +42,24 @@ export default function LearningPage() {
               />
             ))}
           </ul>
+        )}
+        <hr className="hairline" />
+        <h2 className="headline" style={{ fontSize: "1.1rem" }}>
+          Metric Snapshots
+        </h2>
+        <p className="body-text">
+          Two observation sources, and every reading says which it was: read by hand through
+          a measure Work Order, or read from the project&rsquo;s own product funnel with the
+          snapshot it came out of. Nothing is ever overwritten — a further reading of the
+          same metric is another row, because two readings are two facts.
+        </p>
+        <FunnelRead onRead={snapshots.reload} />
+        {snapshots.error && <p className="error-text">{snapshots.error}</p>}
+        {snapshots.snapshots !== null && snapshots.snapshots.length === 0 && (
+          <p className="body-text">No observations recorded yet.</p>
+        )}
+        {snapshots.snapshots !== null && snapshots.snapshots.length > 0 && (
+          <SnapshotTable snapshots={snapshots.snapshots} />
         )}
       </section>
     </Shell>

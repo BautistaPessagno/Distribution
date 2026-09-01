@@ -7,6 +7,7 @@ import { listSlots, slotView } from "./accounts";
 import { listOrders, orderView } from "./work-orders";
 import { listReleases, listTargets, releaseView, targetView } from "./deliveries";
 import { experimentView, listExperiments } from "./experiments";
+import { listSnapshots, snapshotView } from "./snapshots";
 import { currentKit } from "./brand-kit";
 import { checkBrand, checkQuality } from "./checks";
 import {
@@ -307,6 +308,22 @@ function buildServer(sessionKey: string): McpServer {
       return lintedJson({
         context: sessionContext(sessionKey),
         experiments: listExperiments(pinned.projectId).map(experimentView),
+      });
+    }
+  );
+  server.registerTool(
+    "marketingos.list_metric_snapshots",
+    {
+      description:
+        "List the selected Connected Project's Metric Snapshots. Every observation carries its source — read by hand through a measure Work Order, or read from the project's own product funnel — the collection method, when the numbers were true, and, for a funnel read, the project snapshot id and version it came out of. Read-only, and append-only underneath: a further reading of the same metric is another row, never an updated total.",
+      inputSchema: {},
+    },
+    async () => {
+      const pinned = pinnedSession(sessionKey);
+      if (!pinned) return lintedJson(noProjectSelected().response);
+      return lintedJson({
+        context: sessionContext(sessionKey),
+        snapshots: listSnapshots({ projectId: pinned.projectId }).map(snapshotView),
       });
     }
   );

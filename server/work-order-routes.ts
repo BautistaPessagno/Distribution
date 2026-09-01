@@ -4,6 +4,7 @@ import { sessionTokenFrom } from "./auth-routes";
 import { log } from "./log";
 import { listProjects } from "./projects";
 import { releaseGate } from "./release-gate";
+import { completeMeasureOrder, snapshotView, SnapshotError } from "./snapshots";
 import {
   approveOrder,
   beginReview,
@@ -41,7 +42,7 @@ export function workOrderRouter(): Router {
   });
 
   function handle(res: Response, err: unknown): void {
-    if (err instanceof WorkOrderError) {
+    if (err instanceof WorkOrderError || err instanceof SnapshotError) {
       res.status(err.status).json({ error: err.message, detail: err.detail });
       return;
     }
@@ -143,12 +144,20 @@ export function workOrderRouter(): Router {
   router.post("/:id/complete", (req, res) => {
     const order = orderOr404(req, res);
     if (!order) return;
+    const note = typeof req.body?.note === "string" ? req.body.note : "";
     try {
-      const outcome = completeOrder(
-        order.id,
-        typeof req.body?.note === "string" ? req.body.note : "",
-        "operator"
-      );
+      // Completing a measure order files its numbers in the same act, in
+      // one transaction. A measure order that completed without them would
+      // be a person having done the work and the system having lost it.
+      if (order.kind === "measure") {
+        const measured = completeMeasureOrder(order.id, req.body?.readings, note, "operator");
+        res.json({
+          order: orderView(measured.order),
+          snapshots: measured.snapshots.map(snapshotView),
+        });
+        return;
+      }
+      const outcome = completeOrder(order.id, note, "operator");
       res.json({ order: orderView(outcome.order), readiness: outcome.readiness });
     } catch (err) {
       handle(res, err);

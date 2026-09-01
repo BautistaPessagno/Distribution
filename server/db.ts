@@ -34,7 +34,8 @@ export function getDb(): Database.Database {
 //  10  the capped action a Work Order hands out, and instance replacement
 //  11  Content Releases, Delivery Targets, and the disclosure checklist
 //  12  predeclared Experiments, observation points, and measure orders
-const SCHEMA_VERSION = "12";
+//  13  Metric Snapshots from both observation sources
+const SCHEMA_VERSION = "13";
 
 function migrate(d: Database.Database): void {
   d.exec(`
@@ -508,6 +509,49 @@ function migrate(d: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       UNIQUE (observation_id, target_id)
     );
+    -- Metric Snapshots. Two sources reach this table and both say which
+    -- they were: a person reading numbers off a platform through a measure
+    -- Work Order, and a product-funnel read from the project's own metrics
+    -- capability. Every row carries where it came from, how it was
+    -- collected, and when.
+    --
+    -- Insert-only, deliberately. A second observation of the same metric is
+    -- another row, because two readings an hour apart are two facts and
+    -- overwriting the first would destroy the only thing that makes a
+    -- series a series.
+    CREATE TABLE IF NOT EXISTS metric_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      source TEXT NOT NULL CHECK (source IN ('operator_reading', 'project_funnel')),
+      collection_method TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      value REAL NOT NULL,
+      unit TEXT,
+      -- Where this reading belongs, when it belongs anywhere.
+      target_id INTEGER REFERENCES delivery_targets(id),
+      experiment_id INTEGER REFERENCES experiments(id),
+      observation_id INTEGER REFERENCES experiment_observations(id),
+      order_id INTEGER REFERENCES work_orders(id),
+      -- The project's own name for the state a funnel read came out of.
+      project_snapshot_id TEXT,
+      project_snapshot_version INTEGER,
+      -- When the numbers were true, which is not when we wrote them down.
+      observed_at TEXT NOT NULL,
+      recorded_by TEXT NOT NULL,
+      recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE TRIGGER IF NOT EXISTS metric_snapshots_no_update
+    BEFORE UPDATE ON metric_snapshots
+    BEGIN
+      SELECT RAISE(ABORT, 'an observation is never overwritten; a further reading is another row');
+    END;
+    CREATE TRIGGER IF NOT EXISTS metric_snapshots_no_delete
+    BEFORE DELETE ON metric_snapshots
+    BEGIN
+      SELECT RAISE(ABORT, 'an observation is never deleted');
+    END;
+    CREATE INDEX IF NOT EXISTS metric_snapshots_by_target
+      ON metric_snapshots (target_id, metric, observed_at);
     CREATE TABLE IF NOT EXISTS project_changes (
       digest TEXT PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id),

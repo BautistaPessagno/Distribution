@@ -459,6 +459,18 @@ function transition(order: WorkOrder, move: Move, actor: string, note = ""): Wor
   return updated;
 }
 
+/**
+ * The completion guard on its own, so a caller that has work to do before
+ * completing (filing a measure order's numbers, say) can refuse for the
+ * right reason first rather than complaining about its own input while the
+ * order was never completable.
+ */
+export function requireCompletable(orderId: number): WorkOrder {
+  const order = orderOr404(orderId);
+  requireStatus(order, "complete");
+  return order;
+}
+
 function orderOr404(orderId: number): WorkOrder {
   const order = getOrderById(orderId);
   if (!order) throw new WorkOrderError(404, `No Work Order #${orderId}`);

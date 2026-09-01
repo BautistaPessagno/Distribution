@@ -114,6 +114,39 @@ export async function runConformance(baseUrl: string, token: string): Promise<Co
       `status ${unknown.status}, code ${String(unknownError?.code)}`
     );
 
+    // 5b. The metrics capability, if declared, is implemented — and if it
+    // is not declared, it answers as unsupported rather than half-existing.
+    // A capability that is declared but missing is worse than one that was
+    // never claimed, because a reading would be expected from it.
+    const declaresMetrics =
+      Array.isArray(m.capabilities) && (m.capabilities as unknown[]).includes("metrics");
+    const funnel = await fetchJson(`${base}/capabilities/metrics`, token);
+    if (declaresMetrics) {
+      const bundle = (funnel.body ?? {}) as Record<string, unknown>;
+      const ok =
+        funnel.status === 200 &&
+        typeof bundle.snapshotId === "string" &&
+        typeof bundle.version === "number" &&
+        typeof bundle.collectionMethod === "string" &&
+        Array.isArray(bundle.metrics);
+      add(
+        "declared 'metrics' capability serves a bundle with provenance",
+        ok,
+        ok
+          ? `snapshot ${String(bundle.snapshotId)} v${String(bundle.version)}`
+          : `status ${funnel.status}`
+      );
+    } else {
+      const error = ((funnel.body ?? {}) as { error?: { code?: string } }).error;
+      add(
+        "undeclared 'metrics' capability answers as unsupported",
+        funnel.status === 404 &&
+          isStructuredError(funnel.body) &&
+          error?.code === "unsupported_capability",
+        `status ${funnel.status}, code ${String(error?.code)}`
+      );
+    }
+
     // 6. Change feed exposes a monotonic cursor.
     const changes = await fetchJson(`${base}/changes?after=0`, token);
     const c = (changes.body ?? {}) as { cursor?: unknown; entries?: unknown };

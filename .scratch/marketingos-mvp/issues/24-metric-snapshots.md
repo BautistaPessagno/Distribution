@@ -4,8 +4,8 @@
 
 **Blocked by:** 23 Experiments and measure Work Orders.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Completing a measure order records a snapshot tied to its target and experiment
-- [ ] Funnel reads record their project snapshot provenance
-- [ ] A second observation of the same metric appends; nothing updates in place
+- [x] Completing a measure order records a snapshot tied to its target and experiment
+- [x] Funnel reads record their project snapshot provenance
+- [x] A second observation of the same metric appends; nothing updates in place
