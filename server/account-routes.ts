@@ -23,6 +23,7 @@ import { sessionTokenFrom } from "./auth-routes";
 import { log } from "./log";
 import { PLATFORM_POLICIES } from "./platform-policy";
 import { listProjects } from "./projects";
+import { orderView, spawnReplacementOrder } from "./work-orders";
 
 // Operator surface for Account Slots and Instances. Creating a platform
 // identity is a person's act — MarketingOS never creates one and never
@@ -176,10 +177,16 @@ export function accountRouter(): Router {
       const instanceId = Number(req.body?.instanceId);
       const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
       const { instance, slot: updated } = markInstanceLost(instanceId, reason, "operator");
+      // The slot survives, so the replacement is real work someone has to
+      // do. It goes on the queue rather than waiting to be remembered.
+      const replacement = spawnReplacementOrder(updated.id, reason, "operator");
       res.json({
         instance: instanceView(instance),
         slot: slotView(updated),
-        note: "The instance is archived read-only with its history. The slot survives and needs a replacement, which earns readiness from nothing.",
+        replacementOrder: replacement ? orderView(replacement) : null,
+        note: replacement
+          ? "The instance is archived read-only with its history. The slot survives, a replacement Work Order is queued, and the next instance earns readiness from nothing."
+          : "The instance is archived read-only with its history. The slot is halted, so no replacement work was queued; resume it when you want the slot filled again.",
       });
     } catch (err) {
       handle(res, err);

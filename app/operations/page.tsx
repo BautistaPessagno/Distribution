@@ -3,6 +3,7 @@
 import { SlotCard, useSlots } from "../account-slots";
 import { ChangeCard, pendingOf, useApprovals } from "../approvals";
 import { EmptyState, Shell } from "../shell";
+import { useWorkOrders, WorkOrderCardView } from "../work-orders";
 
 // Operations holds the work that needs a person: Work Orders (ticket 20)
 // and, today, the full history of prepared Project Change Sets. The Today
@@ -12,6 +13,7 @@ import { EmptyState, Shell } from "../shell";
 export default function OperationsPage() {
   const { changes, error, reload } = useApprovals();
   const slots = useSlots();
+  const orders = useWorkOrders();
   const pending = pendingOf(changes);
   const decided = (changes ?? []).filter((c) => c.status !== "pending");
 
@@ -80,13 +82,31 @@ export default function OperationsPage() {
         )}
 
         <hr className="hairline" />
-        <EmptyState tag="Manual work" title="No Work Orders yet">
-          <p>
-            Work Orders are manual marketing actions with instructions, an approval
-            policy, and required proof. They populate when the AI Host or a workflow
-            issues one for you to carry out.
-          </p>
-        </EmptyState>
+        <h2 className="headline" style={{ fontSize: "1.1rem" }}>
+          Work Orders
+        </h2>
+        <p className="body-text">
+          Every platform action is your own hand, so this is where that work is handed out
+          and where what came back is recorded. Nothing completes without proof, and a
+          retry is a new attempt — the rejected one stays exactly as it was.
+        </p>
+        {orders.error && <p className="error-text">{orders.error}</p>}
+        {orders.orders !== null && orders.orders.length === 0 && (
+          <EmptyState tag="Manual work" title="No Work Orders yet">
+            <p>
+              Work Orders are manual marketing actions with one instruction, an approval
+              step, and required proof. They populate when a workflow issues one for you
+              to carry out.
+            </p>
+          </EmptyState>
+        )}
+        {orders.orders !== null && orders.orders.length > 0 && (
+          <ul className="connection-list">
+            {orders.orders.map((order) => (
+              <WorkOrderCardView key={order.id} order={order} onChanged={orders.reload} />
+            ))}
+          </ul>
+        )}
       </section>
     </Shell>
   );
