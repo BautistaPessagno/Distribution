@@ -264,6 +264,17 @@ const KIND_PROOF: Record<OrderKind, string> = {
     "The handle of the replacement account, and how you confirmed the old one is gone.",
 };
 
+/**
+ * Sentences in an instruction, counted the way a person reads them: a
+ * terminator followed by whitespace and another word starts a new one, so a
+ * trailing full stop and an abbreviation mid-sentence do not.
+ */
+function sentenceCount(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/[.!?]+\s+(?=\S)/).filter((part) => part.trim().length > 0).length;
+}
+
 export const createOrderSchema = z.object({
   projectId: z.number().int(),
   kind: z.enum(ORDER_KINDS),
@@ -293,6 +304,16 @@ export function createOrder(input: unknown, actor = "operator"): WorkOrder {
   }
   const spec = parsed.data;
 
+  // The warm-up card is one instruction, so the order carries one. Checking
+  // it here is what makes the format true rather than hoped for: a card
+  // cannot render one sentence out of an instruction that holds three.
+  if (spec.kind === "warmup" && sentenceCount(spec.instruction) > 1) {
+    throw new WorkOrderError(
+      400,
+      "A warm-up order is one instruction. Split this into one order per thing to do.",
+      [spec.instruction]
+    );
+  }
   if (spec.slotId !== undefined && !getSlotById(spec.slotId)) {
     throw new WorkOrderError(404, `No Account Slot #${spec.slotId}`);
   }
@@ -720,7 +741,9 @@ export function spawnReplacementOrder(
       kind: "replace",
       title: `Replace the ${slot.platform} account in "${slot.label}"`,
       instruction: `Create a replacement ${slot.identitySpec.kind} for "${slot.label}" on ${slot.platform} by hand, matching the slot's identity spec. Reason the last one is gone: ${why}`,
-      readinessItem: "profile_complete",
+      // No readiness item: the instance that would earn it does not exist
+      // until this order is done, and the replacement earns the checklist
+      // from nothing once it is in place.
     },
     actor
   );

@@ -343,6 +343,31 @@ test("a warm-up order renders as one plain instruction plus a proof field", () =
   ]);
 });
 
+test("a warm-up order that holds more than one instruction is refused", () => {
+  assert.throws(
+    () =>
+      order({
+        kind: "warmup",
+        instruction: "Read ten posts from the niche. Then leave two comments.",
+      }),
+    /one instruction/
+  );
+  // A trailing full stop is not a second sentence.
+  assert.equal(
+    order({ kind: "warmup", instruction: "Read ten posts from the niche." }).kind,
+    "warmup"
+  );
+  // The rule is the warm-up card's, not every order's: a posting order may
+  // carry the context a person needs.
+  assert.equal(
+    order({
+      kind: "post",
+      instruction: "Publish the approved carousel. The caption is already in the piece.",
+    }).kind,
+    "post"
+  );
+});
+
 test("a posting order carries the platform's own disclosure rule; a warm-up does not", () => {
   const posting = slot("Posting slot");
   addInstance({ slotId: posting.id, handle: "@keepanalog" });
@@ -403,6 +428,9 @@ test("losing an instance queues the replacement work, unless the slot is halted"
   assert.equal(replacement?.kind, "replace");
   assert.equal(replacement?.status, "queued");
   assert.match(replacement?.instruction ?? "", /suspended for automation/);
+  // It earns no checklist item: the instance that would earn one does not
+  // exist until this order is done.
+  assert.equal(replacement?.readinessItem, null);
 
   const halted = slot("Halted slot");
   const doomed = addInstance({ slotId: halted.id, handle: "@halted" });
