@@ -1,6 +1,6 @@
 // The daily guided rail (ticket 27; decisions:
-// .scratch/marketing-os/issues/07-choose-dashboard-first-use-loop.md and
-// .scratch/marketing-os/issues/12-define-account-operations-workflow.md).
+// docs/issues/marketing-os/issues/07-choose-dashboard-first-use-loop.md and
+// docs/issues/marketing-os/issues/12-define-account-operations-workflow.md).
 //
 // One step at a time, composed from what is actually due. The rail is not a
 // plan for the day; it is the day's real queue, ordered, with everything

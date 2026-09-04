@@ -1,5 +1,5 @@
 // Metric Snapshots (ticket 24; decisions:
-// .scratch/marketing-os/issues/13-define-measurement-learning-loop.md).
+// docs/issues/marketing-os/issues/13-define-measurement-learning-loop.md).
 //
 // Two observation sources, and every snapshot says which one it was.
 //

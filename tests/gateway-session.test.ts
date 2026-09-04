@@ -1,5 +1,5 @@
 // Contract tests for the session ritual, replaying the GatewaySim reference
-// transcripts from .scratch/marketing-os/prototypes/ai-host-onboarding.html:
+// transcripts from docs/issues/marketing-os/prototypes/ai-host-onboarding.html:
 // walkthrough 1 (cold start: guiding error, then onboard → select_project →
 // pinned snapshot) and walkthrough 5 (stale & cross-project: upstream change
 // blocks reads with stale_snapshot, get_snapshot re-pins, switching projects

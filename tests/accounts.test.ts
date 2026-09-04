@@ -1,9 +1,9 @@
 // Account Slots, Account Instances, and readiness (ticket 19).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/12-define-account-operations-workflow.md
+//   docs/issues/marketing-os/issues/12-define-account-operations-workflow.md
 //     — the six-item checklist, the slot lifecycle, loss and replacement
-//   .scratch/marketing-os/issues/19-research-platform-policies-for-warmup.md
+//   docs/issues/marketing-os/issues/19-research-platform-policies-for-warmup.md
 //     — LinkedIn Page-not-persona, and caps as judgment calls
 
 import test from "node:test";

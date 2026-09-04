@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues and specs use local Markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+Issues and specs use local Markdown files under `docs/issues/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

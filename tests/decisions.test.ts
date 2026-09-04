@@ -1,7 +1,7 @@
 // Decision records and the learning log (ticket 25).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/13-define-measurement-learning-loop.md
+//   docs/issues/marketing-os/issues/13-define-measurement-learning-loop.md
 //     — an experiment concludes at its stop condition and nowhere earlier;
 //       every conclusion carries its ladder rung and its ceiling; funnel
 //       movements are correlations and never proof

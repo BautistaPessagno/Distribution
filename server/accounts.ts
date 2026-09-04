@@ -1,5 +1,5 @@
 // Account Slots, Account Instances, and readiness (ticket 19; decisions:
-// .scratch/marketing-os/issues/12-define-account-operations-workflow.md).
+// docs/issues/marketing-os/issues/12-define-account-operations-workflow.md).
 //
 // A slot is durable capacity: this Connected Project has a presence on this
 // platform, with this identity spec, these niche keywords, these disclosure

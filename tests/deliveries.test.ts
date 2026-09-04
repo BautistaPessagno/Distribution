@@ -1,7 +1,7 @@
 // Distribution deliveries (ticket 22).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/12-define-account-operations-workflow.md
+//   docs/issues/marketing-os/issues/12-define-account-operations-workflow.md
 //     — exported work reaches an account by hand, verifiably
 //
 // The export bundle itself belongs to ticket 11 and is covered by the

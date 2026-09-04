@@ -1,6 +1,6 @@
 // What each platform's own rules say, and — separately — what MarketingOS
-// chose (ticket 19; source: .scratch/marketing-os/research/platform-policies-warmup.md,
-// and the decision in .scratch/marketing-os/issues/19-research-platform-policies-for-warmup.md).
+// chose (ticket 19; source: docs/issues/marketing-os/research/platform-policies-warmup.md,
+// and the decision in docs/issues/marketing-os/issues/19-research-platform-policies-for-warmup.md).
 //
 // The distinction this module exists to keep is the honesty invariant: a
 // number a platform published is a fact with a citation and a date; a

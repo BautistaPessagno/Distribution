@@ -1,5 +1,5 @@
 // Work Orders and the proof cycle (ticket 20; decisions:
-// .scratch/marketing-os/issues/12-define-account-operations-workflow.md).
+// docs/issues/marketing-os/issues/12-define-account-operations-workflow.md).
 //
 // MarketingOS never performs a platform action. Everything that touches a
 // platform is a person's hand, so a Work Order is an instruction to that

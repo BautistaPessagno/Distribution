@@ -1,5 +1,5 @@
 // The first-run setup rail (ticket 26; reference behavior: the approved
-// dashboard prototype in .scratch/marketing-os/prototypes/).
+// dashboard prototype in docs/issues/marketing-os/prototypes/).
 //
 // Three steps, one on screen at a time, each one action. The rail's whole
 // job is to stop a first run from being a survey of everything at once, so

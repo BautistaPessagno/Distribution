@@ -1,5 +1,5 @@
 // Distribution deliveries (ticket 22; decisions:
-// .scratch/marketing-os/issues/12-define-account-operations-workflow.md and
+// docs/issues/marketing-os/issues/12-define-account-operations-workflow.md and
 // the export bundle of ticket 11).
 //
 // Exported work reaches an account by hand. Nothing here posts anything;

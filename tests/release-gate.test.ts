@@ -1,7 +1,7 @@
 // Caps, the kill switch, and replacement (ticket 21).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/12-define-account-operations-workflow.md
+//   docs/issues/marketing-os/issues/12-define-account-operations-workflow.md
 //     — caps and windows block rather than warn, a per-slot pause halts all
 //       of its work instantly, and a lost instance archives read-only while
 //       the slot spawns a replacement

@@ -1,7 +1,7 @@
 // apply_change and Write Receipts (ticket 18).
 //
 // The last two tests are contract replays of GatewaySim in
-// .scratch/marketing-os/prototypes/ai-host-onboarding.html:
+// docs/issues/marketing-os/prototypes/ai-host-onboarding.html:
 //   walkthrough 4 "Two-phase write with approval"
 //   walkthrough 5 "Stale & cross-project"
 // Each step below is the step from that walkthrough, in order.

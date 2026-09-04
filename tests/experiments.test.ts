@@ -1,7 +1,7 @@
 // Predeclared Experiments and the measure orders they schedule (ticket 23).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/13-define-measurement-learning-loop.md
+//   docs/issues/marketing-os/issues/13-define-measurement-learning-loop.md
 //     — predeclaration, observation points, and the honesty of an ad-hoc
 //       reading being labelled as one
 

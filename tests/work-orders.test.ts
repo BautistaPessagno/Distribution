@@ -1,7 +1,7 @@
 // Work Orders and the proof cycle (ticket 20).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/12-define-account-operations-workflow.md
+//   docs/issues/marketing-os/issues/12-define-account-operations-workflow.md
 //     — the typed kinds, the full lifecycle kept whole for a solo Operator,
 //       append-only attempts, self-review as a real step, replacement work
 

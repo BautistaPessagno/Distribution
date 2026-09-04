@@ -1,5 +1,5 @@
 // The safety rails on handing work out (ticket 21; decisions:
-// .scratch/marketing-os/issues/12-define-account-operations-workflow.md).
+// docs/issues/marketing-os/issues/12-define-account-operations-workflow.md).
 //
 // Three things can shut the queue for one Account Slot, and all three block
 // rather than warn. A warning that the Operator can click past is not a

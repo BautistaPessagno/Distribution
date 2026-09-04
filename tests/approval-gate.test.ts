@@ -2,7 +2,7 @@
 //
 // The last two tests are contract replays of the approved reference
 // implementation, CreativePieceMachine in
-// .scratch/marketing-os/prototypes/creative-piece-workflow.html:
+// docs/issues/marketing-os/prototypes/creative-piece-workflow.html:
 //   walkthrough 3 "Brand errors gate approval"
 //   walkthrough 4 "Brand Kit change after approval"
 // Each step below is the step from that walkthrough, in order.

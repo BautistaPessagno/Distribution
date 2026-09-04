@@ -1,5 +1,5 @@
 // Predeclared Experiments and the measure orders they schedule (ticket 23;
-// decisions: .scratch/marketing-os/issues/13-define-measurement-learning-loop.md).
+// decisions: docs/issues/marketing-os/issues/13-define-measurement-learning-loop.md).
 //
 // An experiment is declared in full before any work ships: one variable,
 // one primary metric, the rule that will decide it, the sample it needs,

@@ -1,7 +1,7 @@
 // The image-result handoff (ticket 16).
 //
 // The four register_asset outcomes are a contract replay of GatewaySim
-// walkthrough 3 in .scratch/marketing-os/prototypes/ai-host-onboarding.html:
+// walkthrough 3 in docs/issues/marketing-os/prototypes/ai-host-onboarding.html:
 //   "register_asset without bytes → manual fallback"
 //   "register_asset 4MB → over inline cap"
 //   "register_asset 900KB base64 → accepted"

@@ -1,5 +1,5 @@
 // Decision records and the learning log (ticket 25; decisions:
-// .scratch/marketing-os/issues/13-define-measurement-learning-loop.md).
+// docs/issues/marketing-os/issues/13-define-measurement-learning-loop.md).
 //
 // An experiment concludes at its stop condition and nowhere earlier. No
 // winner is declared before the sample it predeclared has actually been

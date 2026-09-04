@@ -1,7 +1,7 @@
 // Metric Snapshots (ticket 24).
 //
 // Decisions under test:
-//   .scratch/marketing-os/issues/13-define-measurement-learning-loop.md
+//   docs/issues/marketing-os/issues/13-define-measurement-learning-loop.md
 //     — two observation sources, both labelled; provenance on funnel reads;
 //       observations appended and never overwritten
 

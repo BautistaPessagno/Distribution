@@ -3,7 +3,7 @@
 A personal, multi-project marketing workspace: one TypeScript monolith
 (Next.js dashboard + MCP gateway + in-process job runner) over SQLite with
 Litestream replication. See `CONTEXT.md` for the domain glossary and
-`.scratch/marketing-os/spec.md` for the MVP specification.
+`docs/issues/marketing-os/spec.md` for the MVP specification.
 
 ## Development
 
